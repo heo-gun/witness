@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "tlog-dev",
+      "credentials": [{ "accessKey": "tlog-dev", "secretKey": "tlog-dev-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
