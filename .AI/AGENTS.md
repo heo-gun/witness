@@ -52,12 +52,13 @@ packages/shared    API DTO 타입, canonical encoding, 서명 payload 정의
 - 해시와 서명 검증: `@noble/hashes`, `@noble/curves`
 - 브라우저 키: WebCrypto Ed25519(서명), X25519(키 합의), non-extractable, IndexedDB 보관
 - 파일 암호화: WebCrypto HKDF-SHA256, AES-256-GCM
-- ciphertext 저장: S3 호환 스토리지 (로컬은 MinIO)
+- ciphertext 저장: S3 호환 스토리지 (로컬은 SeaweedFS)
+- 스토리지 접근은 `@aws-sdk/client-s3`만 사용하고, 엔드포인트·버킷·자격 증명은 환경변수로 주입한다. SeaweedFS 전용 API는 쓰지 않는다.
 - 서버 상태 관리: TanStack Query
 - 테스트: `packages/*`는 Vitest, `apps/api`는 Jest(e2e 포함)
 
 ```
-docker compose up -d mysql minio
+docker compose up -d mysql seaweedfs
 pnpm install
 pnpm dev
 pnpm test
