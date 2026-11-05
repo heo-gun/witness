@@ -28,4 +28,11 @@ describe("App bootstrap (e2e)", () => {
     const prisma = app.get(PrismaService);
     await expect(prisma.user.count()).resolves.toBeGreaterThanOrEqual(0);
   });
+
+  it("has the single log_state row used for append serialization", async () => {
+    const prisma = app.get(PrismaService);
+    const state = await prisma.logState.findUnique({ where: { id: 1 } });
+    expect(state).not.toBeNull();
+    expect(state?.treeSize).toBeGreaterThanOrEqual(0);
+  });
 });

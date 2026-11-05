@@ -54,6 +54,13 @@ enum SignatureRequestStatus {
   rejected
 }
 
+enum LogEntryType {
+  ISSUE
+  REVOKE
+  KEY_REGISTER
+  KEY_REVOKE
+}
+
 model User {
   id           String   @id @default(uuid(7)) @db.Char(36)
   email        String   @unique @db.VarChar(254)
@@ -68,6 +75,8 @@ model User {
   documentsIssued Document[]
   requestsCreated SignatureRequest[] @relation("SignatureRequester")
   requestsToSign  SignatureRequest[] @relation("SignatureSigner")
+  logEntries      LogEntry[]
+  revocations     Revocation[]
 
   @@map("users")
 }
@@ -87,6 +96,7 @@ model Organization {
   memberKeys        MemberKey[]
   documents         Document[]
   signatureRequests SignatureRequest[]
+  logEntries        LogEntry[]
 
   @@map("organizations")
 }
@@ -153,8 +163,9 @@ model MemberKey {
   status      KeyStatus  @default(pending)
   createdAt   DateTime   @default(now()) @map("created_at") @db.DateTime(3)
 
-  user User         @relation(fields: [userId], references: [id])
-  org  Organization @relation(fields: [orgId], references: [id])
+  user       User         @relation(fields: [userId], references: [id])
+  org        Organization @relation(fields: [orgId], references: [id])
+  logEntries LogEntry[]
 
   @@index([userId, orgId, purpose, status])
   @@index([orgId])
@@ -216,9 +227,75 @@ model Document {
   org              Organization      @relation(fields: [orgId], references: [id])
   issuer           User              @relation(fields: [issuerId], references: [id])
   signatureRequest SignatureRequest?
+  logEntries       LogEntry[]
+  revocation       Revocation?
 
   @@unique([orgId, fileHash])
   @@index([fileHash])
   @@index([issuerId])
   @@map("documents")
+}
+
+// append-only: INSERT만 한다. leaf index는 log_state 행을 FOR UPDATE로 잠근 트랜잭션에서 할당한다
+model LogEntry {
+  leafIndex      Int          @id @map("leaf_index")
+  type           LogEntryType
+  // canonical JSON 원본 바이트. leaf hash = SHA256(0x00 || entry_bytes)
+  entryBytes     Bytes        @map("entry_bytes") @db.Blob
+  leafHash       String       @map("leaf_hash") @db.Char(64)
+  orgId          String       @map("org_id") @db.Char(36)
+  actorId        String       @map("actor_id") @db.Char(36)
+  documentId     String?      @map("document_id") @db.Char(36)
+  keyFingerprint String?      @map("key_fingerprint") @db.Char(64)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+
+  org               Organization @relation(fields: [orgId], references: [id])
+  actor             User         @relation(fields: [actorId], references: [id])
+  document          Document?    @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  key               MemberKey?   @relation(fields: [keyFingerprint], references: [fingerprint], onDelete: Restrict)
+  revocationEntry   Revocation?  @relation("RevocationEntry")
+  revocationOfIssue Revocation?  @relation("RevocationTarget")
+
+  @@index([documentId])
+  @@index([keyFingerprint])
+  @@index([orgId])
+  @@index([actorId])
+  @@map("log_entries")
+}
+
+// append-only: append마다 새 STH 한 행
+model TreeHead {
+  treeSize  Int      @id @map("tree_size")
+  timestamp DateTime @db.DateTime(3)
+  rootHash  String   @map("root_hash") @db.Char(64)
+  signature String   @db.Char(128)
+
+  @@map("tree_heads")
+}
+
+// append-only: 문서당 폐기 한 번. leafIndex는 REVOKE entry, targetLeafIndex는 폐기 대상 ISSUE entry
+model Revocation {
+  id              String   @id @default(uuid(7)) @db.Char(36)
+  documentId      String   @unique @map("document_id") @db.Char(36)
+  leafIndex       Int      @unique @map("leaf_index")
+  targetLeafIndex Int      @unique @map("target_leaf_index")
+  reason          String   @db.VarChar(500)
+  revokedById     String   @map("revoked_by_id") @db.Char(36)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  document  Document @relation(fields: [documentId], references: [id])
+  entry     LogEntry @relation("RevocationEntry", fields: [leafIndex], references: [leafIndex])
+  target    LogEntry @relation("RevocationTarget", fields: [targetLeafIndex], references: [leafIndex])
+  revokedBy User     @relation(fields: [revokedById], references: [id])
+
+  @@index([revokedById])
+  @@map("revocations")
+}
+
+// append 직렬화용 단일 행 (id = 1). 초기 행은 마이그레이션에서 넣는다
+model LogState {
+  id       Int @id
+  treeSize Int @map("tree_size")
+
+  @@map("log_state")
 }
