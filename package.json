@@ -9,7 +9,7 @@
     "dev": "pnpm -F \"./packages/*\" build && pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "lint": "eslint .",
+    "lint": "eslint . && pnpm -F web lint",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
