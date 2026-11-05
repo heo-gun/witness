@@ -21,7 +21,7 @@
 3. 요청 범위 밖의 파일은 수정하지 않는다. 리팩터링이 필요해 보이면 제안만 하고 실행하지 않는다.
 4. 스펙이 모호하면 추측하지 말고 질문한다. 특히 암호학 관련 동작은 절대 추측하지 않는다.
 5. 테스트가 실패하면 테스트를 고쳐서 통과시키지 않는다. 원인을 보고한다.
-6. 코드 주석은 쓰지 않는다. 의도 설명은 변경 요약과 커밋 메시지에 쓴다.
+6. 코드 주석은 필요할 때만 짧게 쓴다. 자명한 코드에는 달지 않는다. 자세한 의도 설명은 변경 요약과 커밋 메시지에 쓴다.
 7. 기능을 완성했다고 보고하기 전에 아래 "평가 기준 체크리스트"에서 해당 기능과 관련된 항목을 확인하고, 충족 여부를 요약에 적는다.
 
 ## 보호 영역
@@ -47,7 +47,7 @@ packages/shared    API DTO 타입, canonical encoding, 서명 payload 정의
 
 ## 스택과 명령어
 
-- Node 22, pnpm workspaces, TypeScript strict
+- Node 26 (최소 24.9), pnpm workspaces, TypeScript strict
 - MySQL 8, Prisma
 - 해시와 서명 검증: `@noble/hashes`, `@noble/curves`
 - 브라우저 키: WebCrypto Ed25519(서명), X25519(키 합의), non-extractable, IndexedDB 보관
