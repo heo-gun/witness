@@ -20,6 +20,40 @@ enum InvitationStatus {
   declined
 }
 
+enum Category {
+  budget
+  settlement
+  receipt
+  agenda
+  other
+}
+
+enum DocumentStatus {
+  pending
+  valid
+  rejected
+  revoked
+}
+
+enum KeyStatus {
+  pending
+  active
+  revoked
+}
+
+enum KeyPurpose {
+  sign
+  encrypt
+}
+
+enum SignatureRequestStatus {
+  awaiting_upload
+  pending
+  needs_resend
+  signed
+  rejected
+}
+
 model User {
   id           String   @id @default(uuid(7)) @db.Char(36)
   email        String   @unique @db.VarChar(254)
@@ -30,6 +64,10 @@ model User {
   memberships     Membership[]
   invitationsSent Invitation[]
   auditLogs       AuditLog[]
+  memberKeys      MemberKey[]
+  documentsIssued Document[]
+  requestsCreated SignatureRequest[] @relation("SignatureRequester")
+  requestsToSign  SignatureRequest[] @relation("SignatureSigner")
 
   @@map("users")
 }
@@ -43,9 +81,12 @@ model Organization {
   createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  memberships Membership[]
-  invitations Invitation[]
-  auditLogs   AuditLog[]
+  memberships       Membership[]
+  invitations       Invitation[]
+  auditLogs         AuditLog[]
+  memberKeys        MemberKey[]
+  documents         Document[]
+  signatureRequests SignatureRequest[]
 
   @@map("organizations")
 }
@@ -99,4 +140,85 @@ model AuditLog {
   @@index([orgId, createdAt])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+// 승인·폐기 시각과 주체는 KEY_REGISTER/KEY_REVOKE log entry에서 조회한다. 여기서는 status만 갱신한다
+model MemberKey {
+  id          String     @id @default(uuid(7)) @db.Char(36)
+  userId      String     @map("user_id") @db.Char(36)
+  orgId       String     @map("org_id") @db.Char(36)
+  purpose     KeyPurpose
+  publicKey   String     @map("public_key") @db.Char(64)
+  fingerprint String     @unique @db.Char(64)
+  status      KeyStatus  @default(pending)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+
+  user User         @relation(fields: [userId], references: [id])
+  org  Organization @relation(fields: [orgId], references: [id])
+
+  @@index([userId, orgId, purpose, status])
+  @@index([orgId])
+  @@map("member_keys")
+}
+
+model SignatureRequest {
+  id           String                 @id @default(uuid(7)) @db.Char(36)
+  orgId        String                 @map("org_id") @db.Char(36)
+  documentId   String                 @unique @map("document_id") @db.Char(36)
+  requesterId  String                 @map("requester_id") @db.Char(36)
+  signerId     String                 @map("signer_id") @db.Char(36)
+  status       SignatureRequestStatus @default(awaiting_upload)
+  rejectReason String?                @map("reject_reason") @db.VarChar(500)
+  createdAt    DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  decidedAt    DateTime?              @map("decided_at") @db.DateTime(3)
+
+  org           Organization   @relation(fields: [orgId], references: [id])
+  document      Document       @relation(fields: [documentId], references: [id])
+  requester     User           @relation("SignatureRequester", fields: [requesterId], references: [id])
+  signer        User           @relation("SignatureSigner", fields: [signerId], references: [id])
+  encryptedFile EncryptedFile?
+
+  @@index([signerId, status])
+  @@index([orgId])
+  @@index([requesterId])
+  @@map("signature_requests")
+}
+
+// deletedAt이 null이고 요청이 끝났으면 스토리지 삭제 재시도 대상이다
+model EncryptedFile {
+  id                   String    @id @default(uuid(7)) @db.Char(36)
+  requestId            String    @unique @map("request_id") @db.Char(36)
+  storageKey           String    @map("storage_key") @db.VarChar(255)
+  ephemeralPublicKey   String    @map("ephemeral_public_key") @db.Char(64)
+  iv                   String    @db.Char(24)
+  recipientFingerprint String    @map("recipient_fingerprint") @db.Char(64)
+  size                 Int
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  deletedAt            DateTime? @map("deleted_at") @db.DateTime(3)
+
+  request SignatureRequest @relation(fields: [requestId], references: [id])
+
+  @@map("encrypted_files")
+}
+
+// 서명·폐기 정보는 log_entries와 revocations에서 조회한다. 여기서는 status만 갱신한다
+model Document {
+  id        String         @id @default(uuid(7)) @db.Char(36)
+  orgId     String         @map("org_id") @db.Char(36)
+  issuerId  String         @map("issuer_id") @db.Char(36)
+  title     String         @db.VarChar(200)
+  category  Category
+  fileHash  String         @map("file_hash") @db.Char(64)
+  status    DocumentStatus @default(pending)
+  createdAt DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  org              Organization      @relation(fields: [orgId], references: [id])
+  issuer           User              @relation(fields: [issuerId], references: [id])
+  signatureRequest SignatureRequest?
+
+  @@unique([orgId, fileHash])
+  @@index([fileHash])
+  @@index([issuerId])
+  @@map("documents")
 }
