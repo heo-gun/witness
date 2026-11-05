@@ -4,6 +4,7 @@ dist/
 next-env.d.ts
 coverage/
 *.tsbuildinfo
+apps/api/src/generated/
 .env*
 !.env.example
 .DS_Store

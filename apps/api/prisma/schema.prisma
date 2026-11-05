@@ -1,0 +1,102 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  owner
+  signer
+  issuer
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  declined
+}
+
+model User {
+  id           String   @id @default(uuid(7)) @db.Char(36)
+  email        String   @unique @db.VarChar(254)
+  name         String   @db.VarChar(50)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  memberships     Membership[]
+  invitationsSent Invitation[]
+  auditLogs       AuditLog[]
+
+  @@map("users")
+}
+
+model Organization {
+  id          String   @id @default(uuid(7)) @db.Char(36)
+  name        String   @db.VarChar(100)
+  slug        String   @unique @db.VarChar(64)
+  description String   @default("") @db.VarChar(500)
+  externalId  String?  @unique @map("external_id") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  memberships Membership[]
+  invitations Invitation[]
+  auditLogs   AuditLog[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  userId    String   @map("user_id") @db.Char(36)
+  orgId     String   @map("org_id") @db.Char(36)
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  user User         @relation(fields: [userId], references: [id])
+  org  Organization @relation(fields: [orgId], references: [id])
+
+  @@id([userId, orgId])
+  @@index([orgId])
+  @@map("memberships")
+}
+
+model Invitation {
+  id          String           @id @default(uuid(7)) @db.Char(36)
+  orgId       String           @map("org_id") @db.Char(36)
+  email       String           @db.VarChar(254)
+  role        Role
+  invitedById String           @map("invited_by_id") @db.Char(36)
+  status      InvitationStatus @default(pending)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  respondedAt DateTime?        @map("responded_at") @db.DateTime(3)
+
+  org       Organization @relation(fields: [orgId], references: [id])
+  invitedBy User         @relation(fields: [invitedById], references: [id])
+
+  @@index([email, status])
+  @@index([orgId])
+  @@index([invitedById])
+  @@map("invitations")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  orgId      String   @map("org_id") @db.Char(36)
+  actorId    String?  @map("actor_id") @db.Char(36)
+  action     String   @db.VarChar(64)
+  targetType String?  @map("target_type") @db.VarChar(32)
+  targetId   String?  @map("target_id") @db.VarChar(36)
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  org   Organization @relation(fields: [orgId], references: [id])
+  actor User?        @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([orgId, createdAt])
+  @@index([actorId])
+  @@map("audit_logs")
+}
