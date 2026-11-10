@@ -1,12 +1,11 @@
 import { Test } from "@nestjs/testing";
-import { AuthModule } from "./auth.module.js";
 import { PasswordService } from "./password.service.js";
 
 describe("PasswordService", () => {
   let service: PasswordService;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AuthModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ providers: [PasswordService] }).compile();
     service = moduleRef.get(PasswordService);
   });
 
