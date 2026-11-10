@@ -10,8 +10,9 @@
 - 커밋 전에 `git diff --cached --name-status`로 스테이징 목록을 확인한다. 직접 작성하지 않은 파일(도구가 자동 생성한 파일 등)이 섞이면 먼저 알린다.
 - `git push`는 사람이 한다. 원격: `origin` = `https://github.com/heo-gun/witness.git`
 - 새 의존성은 이유와 대안을 먼저 제시하고, 2주 이상 지난 안정 버전으로 고정한다.
+- 세션 B 후반은 사용자 요청으로 검토 범위를 확대했다: 인증 API → 인증 UI → 기관 API → 대시보드의 4단위. 각 단위의 Accept 후에만 커밋한다.
 
-## 현재 상태 (세션 A 완료, 2026-11-05)
+## 현재 상태 (세션 B 완료, 시험 배포 보류, 2026-11-11)
 
 | 영역 | 상태 |
 |---|---|
@@ -19,11 +20,13 @@
 | 로컬 인프라 | `docker-compose.yml`: MySQL 8.4(호스트 3307), SeaweedFS 4.48(S3, 8333) |
 | `packages/shared` | `API_PREFIX`만 있음. ESM, `dist` 빌드, Vitest |
 | `packages/merkle` | 빈 패키지 (`export {}`) |
-| `apps/api` | NestJS 12, `/api/v1`, 전역 ValidationPipe, PrismaModule, e2e 3개 |
+| `apps/api` | NestJS 12, `/api/v1`, 인증 4개·기관 4개 API, JWT·멤버십 역할 Guard, e2e 88개 |
 | DB | Prisma 7, 13테이블, 마이그레이션 3개, `log_state (1, 0)` 시드 |
-| `apps/web` | Next.js 16 App Router, Tailwind v4, TanStack Query Provider, `/api` rewrite 프록시 |
+| `apps/web` | Next.js 16 App Router, 디자인 토큰·기초 UI, 헤더·로그인·회원가입·대시보드, 실제 API·TanStack Query 연동 |
 
 평가 체크리스트 충족: DB 테이블 8개 이상(13개), 인덱스(필수 8개 모두).
+
+세션 B 추가 확인: JWT 인증·역할 권한 검사, 입력 DTO 검증, 기관·owner 멤버십의 원자적 생성, 동일 slug 동시 생성 정합성. 프론트는 로그인별 헤더, 폼 검증·로딩·오류, 새로고침 없는 상태 갱신과 반응형을 확인했다. 누적 API는 8개로 16개 기준은 아직 미충족이다. 시험 배포와 배포 환경의 CORS 검증은 사용자 요청으로 보류했다.
 
 ## 결정된 사항
 
@@ -32,11 +35,16 @@
 - `documents`, `member_keys`는 `status`만 갱신한다. 서명·승인·폐기 정보는 `log_entries`(조회용 컬럼 `actor_id`, `document_id`, `key_fingerprint`)와 `revocations`에서 `include`로 조립해 MVP 타입 형태로 응답한다.
 - id는 `uuid(7)` `CHAR(36)`, 시간은 `DATETIME(3)`. STH와 payload의 시간 문자열은 `toISOString()`로 만든다.
 - 로컬 S3는 SeaweedFS. 접근은 `@aws-sdk/client-s3`만 사용한다.
+- 비밀번호는 `argon2@0.45.1`의 Argon2id 기본 설정을 쓴다. 입력 비밀번호의 공백을 제거하지 않는다.
+- JWT는 httpOnly·SameSite=Lax 쿠키(`tlog_session`, path `/api/v1`)로 전달하고 운영 환경에서는 Secure를 켠다. HS256, 발급자·대상·만료를 검증한다. 유효 기간은 1시간이며 자동 갱신은 없다. 로그아웃은 쿠키 삭제이며 복사된 토큰을 서버에서 즉시 폐기하지 않는다.
+- 기관 생성 입력은 이름·slug·설명이다. 생성자가 owner가 되며, 기관 수정은 owner만 이름·설명을 변경할 수 있다. slug는 생성 후 고정하고 `externalId`는 외부 연동 전까지 API 입력에서 제외한다.
+- 문자열은 `apps/web/src/lib/i18n/ko.ts`의 키로 분리했다. 언어 전환 라이브러리·UI는 아직 없다.
+- 로그인 후 `/dashboard`로 이동한다. 기관 캐시는 사용자 id별로 나누고 로그인·로그아웃 때 이전 사용자의 캐시를 비운다. 기관 상세·설정 UI와 초대는 세션 C 범위다.
 
 ## 환경 메모 (함정)
 
 - **Node 26.13** (최소 24.9). NestJS 12가 ESM 전용이라 Jest는 `node --experimental-vm-modules`로 실행한다 (`apps/api/package.json`의 `test:*`).
-- **pnpm 12**: 빌드 스크립트를 가진 패키지는 `pnpm-workspace.yaml`의 `allowBuilds`에 명시해야 설치된다. 현재: `@parcel/watcher` 거부, `prisma`, `@prisma/engines` 허용.
+- **pnpm 12**: 빌드 스크립트를 가진 패키지는 `pnpm-workspace.yaml`의 `allowBuilds`에 명시해야 설치된다. 현재: `@parcel/watcher` 거부, `prisma`, `@prisma/engines`, `argon2` 허용.
 - **TypeScript 7은 쓰지 않는다**: typescript-eslint(`<6.1`)와 ts-jest(`<7`)가 지원하지 않는다.
 - **Prisma 7**
   - 런타임에 driver adapter가 필수다(`@prisma/adapter-mariadb`).
@@ -46,26 +54,25 @@
 - **Next 16**
   - `next dev`가 AI 에이전트를 감지하면 `AGENTS.md`를 자동 생성하므로 `next.config.ts`에서 `agentRules: false`로 꺼뒀다.
   - API가 학습 데이터와 다를 수 있으니 `apps/web/node_modules/next/dist/docs/`를 참고한다.
-- **`.env`**: `apps/api/.env`는 사람이 `.env.example`에서 만든다. 에이전트는 읽지 않는다. `JWT_SECRET`, `LOG_SIGNING_KEY`는 아직 비어 있다.
-- **e2e**: 현재 개발 DB(`tlog`)를 그대로 쓴다. `--runInBand`로 순서대로 실행한다.
+- **`.env`**: `apps/api/.env`는 사람이 `.env.example`에서 만든다. 에이전트는 읽지 않는다. API 실행에는 무작위 `JWT_SECRET`이 최소 32바이트 필요하다. `LOG_SIGNING_KEY`는 세션 C에서 설정한다.
+- **e2e**: `.env` 없이 로컬 `tlog_test`만 사용한다. `TEST_DATABASE_URL`로 접속 정보를 바꿀 수 있지만 로컬 호스트·DB 이름이 정확히 `tlog_test`인 URL만 허용한다. `pnpm -F api test:e2e`가 별도 `test/prisma.config.ts`로 client 생성·기존 마이그레이션 적용 후 `--runInBand`로 실행한다. 테스트의 JWT 비밀값은 매번 임시로 생성한다.
+- **검증**: API e2e 88개와 신규 세션 설정 단위 테스트 4개 통과. 기존 비밀번호 단위 테스트는 사용자가 확인했고 이후 재실행하지 않았다. 웹 lint·타입·프로덕션 빌드 통과. 실제 Chrome에서 가입·로그인·로그아웃·기관 생성·중복 주소·계정 간 캐시 분리·요청 실패 재시도·세션 만료를 확인했다. 긴 이름·설명으로 320/390/768/1024/1440px에서 가로 넘침이 없었다.
+- **기존 경고**: 웹의 ESLint 플러그인 peer 범위가 ESLint 10을 포함하지 않아 설치 시 경고가 난다. 실제 웹 lint는 통과한다.
 
 ## 남은 작업
 
 엔드포인트 이름과 형태는 MVP.md "API 계약"(35개)을 따른다.
 
-### 세션 B (2h): 인증과 기관
+### 세션 B (2h): 인증과 기관 — 완료, 시험 배포 보류
 
-시작 전에 정할 것:
-1. 비밀번호 해시: `argon2`(권장, allowBuilds 필요)와 `bcryptjs` 중 선택
-2. JWT 위치: httpOnly 쿠키(권장, 같은 origin 프록시)와 Authorization 헤더 중 선택
-3. e2e 전용 DB(`tlog_test`)를 분리할지
+결정: Argon2id, httpOnly 쿠키, e2e 전용 `tlog_test` 분리.
 
 단계:
-1. **auth 모듈**: register, login, logout, me (4). JWT Guard, `@CurrentUser`. DTO Validation. 각 API마다 성공 1개, 권한 실패 1개 테스트
-2. **web**: 디자인 토큰(무채색과 남색 포인트, 상태 색), shadcn/ui 기초 컴포넌트, 헤더, `/login`, `/register`. i18n 키 분리 방식 결정
-3. **orgs 모듈**: createOrg, listOrgs, getOrg, updateOrg (4). 멤버십 기반 역할 Guard(`@Roles`)
-4. **web**: `/dashboard` (내 기관 목록, 기관 생성)
-5. **시험 배포**: `*.newbie.sparcs.net`에 올리고 `/api` 프록시와 CORS 확인
+1. **완료·Accept**: auth 모듈 — register, login, logout, me (4), JWT Guard, `@CurrentUser`, DTO 검증. 가입은 공개 API이고 인증 실패 검증은 나머지 보호 API에서 한다.
+2. **완료·Accept**: 디자인 토큰·기초 컴포넌트, 헤더, `/login`, `/register`, 한국어 문자열 키 분리.
+3. **완료·Accept**: orgs 모듈 — createOrg, listOrgs, getOrg, updateOrg (4), 멤버십 기반 `@Roles` Guard.
+4. **완료·Accept**: `/dashboard`의 내 기관 목록·기관 생성, 로그인 보호, 로그인 후 이동·헤더 연결.
+5. **사용자 요청으로 보류**: `*.newbie.sparcs.net` 시험 배포 및 배포 환경 `/api` 프록시·CORS 확인. 로컬에서는 같은 origin의 `/api` rewrite로 인증·기관 생성까지 검증했다.
 
 누적 endpoint 8
 

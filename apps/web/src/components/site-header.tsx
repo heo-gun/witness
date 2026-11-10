@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { logout } from "@/api/auth";
@@ -13,6 +13,7 @@ export function SiteHeader() {
   const session = useSession();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const pathname = usePathname();
   const mutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
@@ -46,14 +47,24 @@ export function SiteHeader() {
             <Button
               variant="ghost"
               title={ko.auth.sessionError}
+              disabled={session.isFetching}
               onClick={() => void session.refetch()}
             >
-              {ko.common.retry}
+              {session.isFetching ? ko.common.loading : ko.common.retry}
             </Button>
           ) : session.data ? (
             <>
+              <Link
+                href="/dashboard"
+                aria-current={pathname === "/dashboard" ? "page" : undefined}
+                className={buttonVariants({
+                  variant: pathname === "/dashboard" ? "outline" : "ghost",
+                })}
+              >
+                {ko.common.dashboard}
+              </Link>
               <span
-                className="max-w-28 truncate text-sm text-muted-foreground sm:max-w-48"
+                className="hidden max-w-48 truncate text-sm text-muted-foreground sm:inline"
                 title={session.data.name}
               >
                 {session.data.name}

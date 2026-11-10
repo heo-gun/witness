@@ -30,7 +30,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         router.replace("/login");
       } else {
         await updateSession(queryClient, user);
-        router.replace("/");
+        router.replace("/dashboard");
       }
     },
     onError: (error) => toast.error(authErrorMessage(error)),
@@ -67,8 +67,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {ko.auth.alreadySignedIn}
         </h1>
         <p className="mt-3 break-all text-sm text-muted-foreground">{session.data.email}</p>
-        <Link href="/" className={buttonVariants({ className: "mt-6 w-full" })}>
-          {ko.auth.continueHome}
+        <Link href="/dashboard" className={buttonVariants({ className: "mt-6 w-full" })}>
+          {ko.auth.continueDashboard}
         </Link>
       </Card>
     );
