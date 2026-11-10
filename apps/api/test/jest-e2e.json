@@ -1,5 +1,6 @@
 {
   "rootDir": ".",
+  "setupFiles": ["<rootDir>/setup.ts"],
   "testRegex": ".*\\.e2e-spec\\.ts$",
   "transform": {
     "^.+\\.ts$": "ts-jest"

@@ -7,9 +7,10 @@
     "build": "prisma generate && nest build",
     "dev": "prisma generate && nest start --watch --preserveWatchOutput --exec \"node --env-file-if-exists=.env\"",
     "start": "node --env-file-if-exists=.env dist/main.js",
-    "test": "prisma generate && pnpm test:unit && pnpm test:e2e",
+    "test": "prisma generate --config test/prisma.config.ts && pnpm test:unit && pnpm test:e2e",
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests",
-    "test:e2e": "node --env-file-if-exists=.env --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-e2e.json --runInBand"
+    "test:db:prepare": "prisma generate --config test/prisma.config.ts && prisma migrate deploy --config test/prisma.config.ts",
+    "test:e2e": "pnpm test:db:prepare && node --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-e2e.json --runInBand"
   },
   "jest": {
     "rootDir": "src",
