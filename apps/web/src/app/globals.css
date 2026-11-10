@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+:root {
+  --background: #f7f8fa;
+  --foreground: #182335;
+  --card: #ffffff;
+  --primary: #1b2e4b;
+  --primary-foreground: #ffffff;
+  --muted: #edf0f4;
+  --muted-foreground: #667286;
+  --border: #dde3eb;
+  --input: #d3dbe5;
+  --ring: #4b6589;
+  --destructive: #b42332;
+  --valid: #18734b;
+  --revoked: #b35a13;
+  --pending: #8c6a11;
+  --unregistered: #667286;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-valid: var(--valid);
+  --color-revoked: var(--revoked);
+  --color-pending: var(--pending);
+  --color-unregistered: var(--unregistered);
+}
+
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: Arial, "Malgun Gothic", sans-serif;
+  }
+  ::selection {
+    background: #dce5f1;
+  }
+}
