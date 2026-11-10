@@ -13,6 +13,6 @@ import { SessionService } from "./session.service.js";
   imports: [PrismaModule, JwtModule.registerAsync({ useFactory: getJwtOptions })],
   controllers: [AuthController],
   providers: [PasswordService, AuthService, SessionService, JwtAuthGuard, JsonRequestGuard],
-  exports: [PasswordService, JwtAuthGuard],
+  exports: [PasswordService, SessionService, JwtAuthGuard, JsonRequestGuard],
 })
 export class AuthModule {}
