@@ -76,27 +76,37 @@
 
 누적 endpoint 8
 
-### 세션 C (5h): 신뢰의 뼈대
+### 세션 C (5h): 신뢰의 뼈대 — 진행 중 (2026-11-16)
 
-1. **members와 invitations**: listMembers, changeRole, removeMember, inviteMember, listMyInvitations, accept, decline (7). 중복 pending 초대는 서비스에서 막는다. `/orgs/[slug]` 멤버 탭, dashboard의 받은 초대
-2. **`packages/shared`**: RFC 8785 JCS canonical encoder, ISSUE·REVOKE·KEY_* payload 타입, hex 검증 유틸, 테스트
-3. **`packages/merkle`** (보호 영역): RFC 9162 §2.1 root, §2.1.3 inclusion, §2.1.4 consistency 생성과 검증
-   - `@noble/hashes` 사용
-   - **테스트 벡터(크기 1~64)는 사람이 만든다**. 세션 전에 준비해두면 시간이 크게 절약된다.
-   - 변조된 proof가 거부되는지도 테스트한다.
-   - Jest에서 ESM 전용 `@noble/*`가 로드되는지 확인한다.
-4. **log 모듈**
+검토 단위는 사용자와 합의한 8단계다. 각 단계 구현·검증 후 Accept를 받고 커밋한다.
+
+1. **멤버·초대 API — 완료·Accept**: listMembers, changeRole, removeMember, inviteMember, listMyInvitations, accept, decline (7).
+   - 기관 멤버는 목록을 조회하고 owner만 멤버 변경·초대를 수행한다. 초대 수락·거절은 해당 이메일의 사용자만 가능하다.
+   - 기본 정책으로 마지막 owner의 강등·제거를 금지하고, 미가입 이메일 초대를 허용한다. 기존 멤버와 중복 pending 초대는 409다.
+   - pending·active 키 또는 처리 중인 요청(awaiting_upload/pending/needs_resend)이 있는 멤버는 역할 변경·제거를 409로 거부한다. 같은 역할로의 변경은 허용한다. 이 정책을 포함해 사용자가 리뷰·승인했다.
+   - 받은 초대 목록은 pending만 반환한다. 완료된 초대의 재응답은 409, 초대 수락 시 멤버십 생성과 초대 상태 변경은 원자적이다.
+   - 기관 행을 FOR UPDATE로 잠그고 ReadCommitted 트랜잭션 내에서 owner 권한을 재검증한다. 같은 잠금으로 중복 초대·동시 응답·마지막 owner 변경을 직렬화한다.
+   - 멤버 응답에 공개 사용자 정보, 초대 응답에 기관 요약을 함께 제공한다. 초대의 invitedBy는 MVP 필드명을 유지한다.
+   - API e2e 125개(기존 88 + 신규 37), API TypeScript, 변경 파일 ESLint 통과. 이메일 길이를 초과했던 신규 테스트 주소를 수정했으며 DTO 규칙과 기대 결과는 유지했다.
+   - 스키마·마이그레이션·의존성 변경 없음. 기존 비밀번호 단위 테스트는 재실행하지 않았다.
+2. **기관 상세·초대 UI**: `/orgs/[slug]` 멤버 관리·기관 설정, dashboard의 받은 초대 수락·거절, 기관 상세 링크.
+3. **`packages/shared`**: RFC 8785 JCS canonical encoder, ISSUE·REVOKE·KEY_* payload 타입, hex 검증 유틸, 테스트.
+4. **Merkle root·inclusion proof** (보호 영역): RFC 9162 §2.1 root, §2.1.3 inclusion 생성·검증. 상세 계획 승인 후 구현한다.
+5. **Merkle consistency proof** (보호 영역): RFC 9162 §2.1.4 consistency 생성·검증.
+   - `@noble/hashes` 사용. **테스트 벡터(크기 1~64)는 사람이 만든다**. 에이전트는 작성·수정하지 않는다.
+   - 경계 조건·변조 proof 거부를 검증하고 Jest에서 ESM 전용 `@noble/*` 로딩을 확인한다.
+6. **log 모듈**
    - `log_state` `SELECT ... FOR UPDATE` 직렬화 append와 STH Ed25519 서명(`LOG_SIGNING_KEY`)
    - getLatestSth, listSthHistory, getConsistencyProof, listEntries, getInclusionProof (5)
    - 빈 트리 STH 처리 방식을 결정한다.
    - 동시 append 20건에서 leaf index가 연속인지 테스트한다.
-5. **keys**
+7. **멤버 키 API**
    - API: registerKey, listKeys, getMemberActiveKeys, approveKey(`KEY_REGISTER` append), revokeKey(`KEY_REVOKE` append, 대기 요청을 `needs_resend`로) (5)
-   - `apps/web/src/lib/crypto/keys.ts`(보호 영역, non-extractable, IndexedDB)
-   - `/settings/keys`, 기관 키 탭(승인)
    - 같은 사용자, 기관, 용도의 active 키가 하나만 되도록 승인 로직에서 보장한다.
+   - 키 등록·승인과 이후 세션 D의 요청 생성 등은 멤버 변경과 동일한 기관 행 잠금 규칙을 적용하고, 잠금 후 멤버십·역할을 재검증해야 한다.
+8. **브라우저 키·관리 UI**: `apps/web/src/lib/crypto/keys.ts`(보호 영역, 상세 계획 승인 필요, non-extractable, IndexedDB), `/settings/keys`, 기관 키 승인·폐기 UI, 실제 브라우저 검증.
 
-누적 endpoint 25
+1단계 Accept 완료. 남은 검토 단위는 7개이며 2단계의 기관 상세·멤버 관리·설정·받은 초대 UI는 한 검토 단위로 묶는다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
 
 ### 세션 D (5h): 서명 흐름 완성
 
