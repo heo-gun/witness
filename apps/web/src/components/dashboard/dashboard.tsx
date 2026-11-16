@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listOrgs, orgKeys } from "@/api/orgs";
 import { ApiError } from "@/api/client";
 import { updateSession, useSession } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CreateOrgForm } from "./create-org-form";
+import { ReceivedInvitations } from "./received-invitations";
 
 const dateFormat = new Intl.DateTimeFormat("ko-KR", {
   dateStyle: "medium",
@@ -43,6 +45,7 @@ export function Dashboard() {
         </h1>
         <p className="mt-4 text-sm leading-6 text-muted-foreground">{ko.dashboard.description}</p>
       </div>
+      <ReceivedInvitations key={userId} userId={userId} />
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section aria-labelledby="org-list-title" className="min-w-0">
           <div className="mb-5 flex items-center gap-3">
@@ -98,6 +101,13 @@ export function Dashboard() {
                         {dateFormat.format(new Date(org.createdAt))}
                       </time>
                     </p>
+                    <Link
+                      href={`/orgs/${encodeURIComponent(org.slug)}`}
+                      className={`${buttonVariants({ variant: "outline" })} mt-5 self-start`}
+                    >
+                      {ko.orgs.open}
+                      <span className="sr-only">: {org.name}</span>
+                    </Link>
                   </Card>
                 </li>
               ))}

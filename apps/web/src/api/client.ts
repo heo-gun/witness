@@ -7,7 +7,11 @@ export class ApiError extends Error {
 
 export async function apiRequest<T>(
   path: string,
-  options: { method?: "GET" | "POST"; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: "GET" | "POST" | "PATCH" | "DELETE";
+    body?: unknown;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<T> {
   const timeout = AbortSignal.timeout(15_000);
   const response = await fetch(`/api/v1${path}`, {
