@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client.js";
+import { withOwnerTransaction } from "../members/organization-lock.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { CreateOrgDto } from "./dto/create-org.dto.js";
@@ -50,16 +51,18 @@ export class OrgsService {
     });
   }
 
-  async updateOrg(orgId: string, input: UpdateOrgDto) {
+  async updateOrg(orgId: string, actorId: string, input: UpdateOrgDto) {
     if (input.name === undefined && input.description === undefined) {
       throw new BadRequestException("At least one organization field is required");
     }
     try {
-      return await this.prisma.organization.update({
-        where: { id: orgId },
-        data: { name: input.name, description: input.description },
-        select: ORGANIZATION_SELECT,
-      });
+      return await withOwnerTransaction(this.prisma, orgId, actorId, (tx) =>
+        tx.organization.update({
+          where: { id: orgId },
+          data: { name: input.name, description: input.description },
+          select: ORGANIZATION_SELECT,
+        }),
+      );
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
         throw new NotFoundException("Organization not found");

@@ -45,8 +45,9 @@ export class OrgsController {
   updateOrg(
     @Param() _params: OrgSlugDto,
     @CurrentOrg() context: OrganizationContext,
+    @CurrentUser() user: SessionUser,
     @Body() input: UpdateOrgDto,
   ) {
-    return this.orgs.updateOrg(context.organization.id, input);
+    return this.orgs.updateOrg(context.organization.id, user.id, input);
   }
 }

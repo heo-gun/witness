@@ -6,6 +6,7 @@ import request from "supertest";
 import { AppModule } from "../src/app.module.js";
 import { SESSION_COOKIE } from "../src/auth/session.config.js";
 import { configureApp } from "../src/main.js";
+import { OrgsService } from "../src/orgs/orgs.service.js";
 import { PrismaService } from "../src/prisma/prisma.service.js";
 
 interface Actor {
@@ -273,6 +274,58 @@ describe("Organizations and roles (e2e)", () => {
       .set("Cookie", owner.cookie)
       .send(input)
       .expect(400);
+  });
+
+  it("rejects an organization write when the owner is demoted after passing the Guard", async () => {
+    await prisma.membership.create({ data: { orgId, userId: outsider.id, role: "owner" } });
+    const before = await prisma.organization.findUniqueOrThrow({ where: { id: orgId } });
+    const orgs = app.get(OrgsService);
+    const original = orgs.updateOrg.bind(orgs);
+    let reachedWrite!: () => void;
+    let releaseWrite!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      reachedWrite = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const spy = jest.spyOn(orgs, "updateOrg").mockImplementation(async (...args) => {
+      reachedWrite();
+      await release;
+      return original(...args);
+    });
+    const pending = request(app.getHttpServer())
+      .patch(`/api/v1/orgs/${slug}`)
+      .set("Cookie", owner.cookie)
+      .send({ name: "강등 후 쓰기" })
+      .then((response) => response);
+    try {
+      await Promise.race([
+        reached,
+        pending.then(() => {
+          throw new Error("Expected the Guard to reach the write service");
+        }),
+      ]);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/orgs/${slug}/members/${owner.id}`)
+        .set("Cookie", outsider.cookie)
+        .send({ role: "issuer" })
+        .expect(200);
+      releaseWrite();
+      expect((await pending).status).toBe(403);
+      expect((await prisma.organization.findUniqueOrThrow({ where: { id: orgId } })).name).toBe(
+        before.name,
+      );
+    } finally {
+      releaseWrite();
+      await pending;
+      spy.mockRestore();
+      await prisma.membership.update({
+        where: { userId_orgId: { userId: owner.id, orgId } },
+        data: { role: "owner" },
+      });
+      await prisma.membership.delete({ where: { userId_orgId: { userId: outsider.id, orgId } } });
+    }
   });
 
   it("rechecks the current membership role rather than trusting an earlier session", async () => {

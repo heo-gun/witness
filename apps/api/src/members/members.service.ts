@@ -1,14 +1,8 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
-import { Prisma } from "../generated/prisma/client.js";
-import type { Role } from "../generated/prisma/client.js";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import type { Prisma, Role } from "../generated/prisma/client.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
-import { lockOrganization } from "./organization-lock.js";
+import { withOwnerTransaction } from "./organization-lock.js";
 
 const MEMBER_SELECT = {
   userId: true,
@@ -35,17 +29,7 @@ export class MembersService {
     actorId: string,
     operation: (tx: Prisma.TransactionClient) => Promise<T>,
   ) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        await lockOrganization(tx, orgId);
-        const actor = await tx.membership.findUnique({
-          where: { userId_orgId: { userId: actorId, orgId } },
-        });
-        if (actor?.role !== "owner") throw new ForbiddenException("Owner role required");
-        return operation(tx);
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
-    );
+    return withOwnerTransaction(this.prisma, orgId, actorId, operation);
   }
 
   changeRole(orgId: string, actorId: string, userId: string, role: Role) {
