@@ -17,7 +17,11 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "vitest run --passWithNoTests"
   },
+  "dependencies": {
+    "@noble/hashes": "2.4.0"
+  },
   "devDependencies": {
+    "@tlog/shared": "workspace:*",
     "vitest": "5.0.5"
   }
 }

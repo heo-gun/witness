@@ -12,14 +12,14 @@
 - 새 의존성은 이유와 대안을 먼저 제시하고, 2주 이상 지난 안정 버전으로 고정한다.
 - 세션 B 후반은 사용자 요청으로 검토 범위를 확대했다: 인증 API → 인증 UI → 기관 API → 대시보드의 4단위. 각 단위의 Accept 후에만 커밋한다.
 
-## 현재 상태 (세션 C 3단계 완료, 시험 배포 보류, 2026-11-16)
+## 현재 상태 (세션 C 4단계 완료, 시험 배포 보류, 2026-11-16)
 
 | 영역 | 상태 |
 |---|---|
 | 모노레포 | pnpm workspace, TS 6.0 strict, ESLint 10 flat, Prettier, LF 고정 |
 | 로컬 인프라 | `docker-compose.yml`: MySQL 8.4(호스트 3307), SeaweedFS 4.48(S3, 8333) |
 | `packages/shared` | `API_PREFIX`, JCS 인코더·UTF-8 바이트, payload 타입, 소문자 hex 유틸. ESM, Vitest 70개 |
-| `packages/merkle` | 빈 패키지 (`export {}`) |
+| `packages/merkle` | RFC 9162 root·inclusion 생성/검증, Vitest 2,167개. 독립 Python 벡터 준비 |
 | `apps/api` | NestJS 12, `/api/v1`, 인증·기관·멤버·초대 API 15개, JWT·멤버십 역할 Guard, e2e 125개 |
 | DB | Prisma 7, 13테이블, 마이그레이션 3개, `log_state (1, 0)` 시드 |
 | `apps/web` | Next.js 16 App Router, 인증·대시보드, 기관 상세·멤버 관리·설정·초대 UI, 실제 API·TanStack Query 연동 |
@@ -108,9 +108,19 @@
    - Vitest 70개 통과: RFC의 키 정렬·Appendix B 숫자 예제, 직접 명시한 UTF-8 바이트, 잘못된 입력 거부, wire payload 형태, hex 경계값. ESM 빌드, shared 구현·테스트 타입, API·웹 타입 호환성, shared ESLint 통과.
    - `canonicalBytes`와 `hexToBytes`의 반환 타입은 `Uint8Array<ArrayBuffer>`다. WebCrypto의 `BufferSource`에 타입 단언 없이 전달할 수 있음을 shared 타입 검사에서 확인했다. 평가 항목 중 해시·키·서명 입력 검증의 공통 기반을 마련했으며, 실제 endpoint DTO 연결은 후속 단계다.
    - 빌드된 동일 ESM을 Node와 실제 headless Chrome에서 로드하여 입력 15개의 바이트 일치, 브라우저의 잘못된 입력 10개 거부와 hex 유틸 동작을 확인했다. 새 의존성·API·DB·보호 영역 변경 없음.
-4. **Merkle root·inclusion proof** (보호 영역): RFC 9162 §2.1 root, §2.1.3 inclusion 생성·검증. 상세 계획 승인 후 구현한다.
+4. **Merkle root·inclusion proof — 완료·Accept** (보호 영역): RFC 9162 §2.1.1 root, §2.1.3.1 inclusion 생성, §2.1.3.2 inclusion 검증.
+   - 사용자가 상세 계획을 승인했고 벡터 생성에 관해 “테스트 벡터는 /subagent를 통해 만들어. 그리고 네가 직접 테스트해.”라고 명시했다. 이번 벡터 신규 생성은 기존 사람이 작성/에이전트 수정 금지 규칙의 사용자 승인 예외다. 일반 규칙은 변경하지 않는다.
+   - 서브에이전트는 `test/vectors/**`의 Python hashlib 참조 생성기·문서·고정 벡터만 작성했다. 프로덕션 TypeScript와 테스트 runner는 메인 에이전트가 작성·직접 실행했다.
+   - 고정 입력은 64개(첫 입력은 빈 바이트, 이후 UTF-8 `tlog-vector-001`~`063`). root 65개(0~64), inclusion 2,080개, 다음 단계용 consistency 2,016개. JSONL 두 proof 파일은 합계 약 1.66MB이며 README에 형식·RFC 근거·재생성 방법·독립성 한계를 기록했다.
+   - 참조 생성기는 재귀 생성과 별개로 스택 root·반복 proof 검증, 변조·누락·추가 거부, RFC §2.1.5의 7-leaf 구조 예제를 확인했다. 재생성 결과도 바이트 단위로 일치했다. TypeScript 구현의 출력으로 기대값을 생성하지 않았다.
+   - `leafHash(entryBytes)`, `nodeHash(left,right)`, `rootFromLeafHashes(leafHashes)`, `createInclusionProof(leafHashes,leafIndex)`, `verifyInclusion({leafHash,leafIndex,treeSize,rootHash,proof})`를 공개한다. 원본 바이트와 이미 해시된 leaf의 입력을 구분한다.
+   - 해시는 32바이트다. 생성 입력 오류는 TypeError/RangeError, 잘못된 proof·메타데이터는 false다. 단일 leaf의 proof는 빈 배열이며 빈 트리 inclusion은 허용하지 않는다. 입력을 변경하지 않고 root·proof는 입력과 메모리를 공유하지 않는다.
+   - 검증의 인덱스 계산에는 정수 나눗셈을 사용해 32비트 잘림을 피하고, 안전한 정수 범위와 proof 최대 길이 53을 확인한다. 32/52비트 인덱스도 별도 테스트했다. 반환 바이트는 WebCrypto BufferSource와 호환된다.
+   - `@noble/hashes@2.4.0`(2026-08-27 출시, 2주 이상 지난 안정 버전)을 고정했다. WebCrypto가 대안이지만 저장소에서 지정한 Node/브라우저 공통 동기 해시를 사용했다. 테스트만 `@tlog/shared`의 hex 유틸을 사용한다.
+   - 메인 실행 검증: Vitest 2,167개, 빌드, 구현·테스트 타입 검사 통과. 실제 Chrome native ESM에서 root 65개·inclusion 2,080개 일치와 변조 거부·큰 인덱스를 확인했다. 설치된 API Jest에서 ESM 로드·생성·검증 1개 통과. 첫 검증에서 존재하지 않는 equalBytes export 사용 오류를 수정했으며 벡터·기대값은 변경하지 않았다.
+   - 관련 평가 항목은 브라우저 검증을 위한 공통 Merkle 기반이다. DB append·STH 서명·API 통합·consistency TypeScript 구현은 후속 단계다. 현재 root·proof 생성은 전체 leaf 목록을 받으며 DB 노드 캐시나 증분 append 최적화는 포함하지 않는다.
 5. **Merkle consistency proof** (보호 영역): RFC 9162 §2.1.4 consistency 생성·검증.
-   - `@noble/hashes` 사용. **테스트 벡터(크기 1~64)는 사람이 만든다**. 에이전트는 작성·수정하지 않는다.
+   - `@noble/hashes` 사용. 테스트 벡터는 기본적으로 사람이 작성한다. 이번 세션은 위 사용자 승인 예외에 따라 서브에이전트가 독립 생성한 consistency 2,016개를 준비했다. 벡터 수정은 별도 요청 없이는 하지 않는다.
    - 경계 조건·변조 proof 거부를 검증하고 Jest에서 ESM 전용 `@noble/*` 로딩을 확인한다.
 6. **log 모듈**
    - `log_state` `SELECT ... FOR UPDATE` 직렬화 append와 STH Ed25519 서명(`LOG_SIGNING_KEY`)
@@ -123,7 +133,7 @@
    - 키 등록·승인과 이후 세션 D의 요청 생성 등은 멤버 변경과 동일한 기관 행 잠금 규칙을 적용하고, 잠금 후 멤버십·역할을 재검증해야 한다.
 8. **브라우저 키·관리 UI**: `apps/web/src/lib/crypto/keys.ts`(보호 영역, 상세 계획 승인 필요, non-extractable, IndexedDB), `/settings/keys`, 기관 키 승인·폐기 UI, 실제 브라우저 검증.
 
-3단계까지 Accept 완료. 남은 검토 단위는 5개다. 4단계 Merkle 구현 전에는 보호 영역 상세 계획 승인과 사람이 준비한 테스트 벡터를 확인한다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
+4단계까지 Accept 완료. 남은 검토 단위는 4개다. 5단계 consistency 구현도 보호 영역 상세 계획 승인 후 진행한다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
 
 ### 세션 D (5h): 서명 흐름 완성
 
