@@ -10,6 +10,11 @@ export interface InclusionVector {
   leafIndex: number;
   proof: string[];
 }
+export interface ConsistencyVector {
+  first: number;
+  second: number;
+  proof: string[];
+}
 
 function jsonLines<T>(name: string): T[] {
   return readFileSync(new URL(`./vectors/${name}.jsonl`, import.meta.url), "utf8")
@@ -24,6 +29,7 @@ const entryHex = JSON.parse(
 export const entries = entryHex.map((hex) => hexToBytes(hex));
 export const roots = jsonLines<RootVector>("roots");
 export const inclusions = jsonLines<InclusionVector>("inclusion");
+export const consistencies = jsonLines<ConsistencyVector>("consistency");
 export const rootBySize = new Map(
   roots.map(({ treeSize, rootHash }) => [treeSize, hexToBytes(rootHash, 32)]),
 );

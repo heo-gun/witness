@@ -12,14 +12,14 @@
 - 새 의존성은 이유와 대안을 먼저 제시하고, 2주 이상 지난 안정 버전으로 고정한다.
 - 세션 B 후반은 사용자 요청으로 검토 범위를 확대했다: 인증 API → 인증 UI → 기관 API → 대시보드의 4단위. 각 단위의 Accept 후에만 커밋한다.
 
-## 현재 상태 (세션 C 4단계 완료, 시험 배포 보류, 2026-11-16)
+## 현재 상태 (세션 C 5단계 완료, 시험 배포 보류, 2026-11-16)
 
 | 영역 | 상태 |
 |---|---|
 | 모노레포 | pnpm workspace, TS 6.0 strict, ESLint 10 flat, Prettier, LF 고정 |
 | 로컬 인프라 | `docker-compose.yml`: MySQL 8.4(호스트 3307), SeaweedFS 4.48(S3, 8333) |
 | `packages/shared` | `API_PREFIX`, JCS 인코더·UTF-8 바이트, payload 타입, 소문자 hex 유틸. ESM, Vitest 70개 |
-| `packages/merkle` | RFC 9162 root·inclusion 생성/검증, Vitest 2,167개. 독립 Python 벡터 준비 |
+| `packages/merkle` | RFC 9162 root·inclusion·consistency 생성/검증, Vitest 4,256개. 독립 Python 벡터 |
 | `apps/api` | NestJS 12, `/api/v1`, 인증·기관·멤버·초대 API 15개, JWT·멤버십 역할 Guard, e2e 125개 |
 | DB | Prisma 7, 13테이블, 마이그레이션 3개, `log_state (1, 0)` 시드 |
 | `apps/web` | Next.js 16 App Router, 인증·대시보드, 기관 상세·멤버 관리·설정·초대 UI, 실제 API·TanStack Query 연동 |
@@ -119,9 +119,15 @@
    - `@noble/hashes@2.4.0`(2026-08-27 출시, 2주 이상 지난 안정 버전)을 고정했다. WebCrypto가 대안이지만 저장소에서 지정한 Node/브라우저 공통 동기 해시를 사용했다. 테스트만 `@tlog/shared`의 hex 유틸을 사용한다.
    - 메인 실행 검증: Vitest 2,167개, 빌드, 구현·테스트 타입 검사 통과. 실제 Chrome native ESM에서 root 65개·inclusion 2,080개 일치와 변조 거부·큰 인덱스를 확인했다. 설치된 API Jest에서 ESM 로드·생성·검증 1개 통과. 첫 검증에서 존재하지 않는 equalBytes export 사용 오류를 수정했으며 벡터·기대값은 변경하지 않았다.
    - 관련 평가 항목은 브라우저 검증을 위한 공통 Merkle 기반이다. DB append·STH 서명·API 통합·consistency TypeScript 구현은 후속 단계다. 현재 root·proof 생성은 전체 leaf 목록을 받으며 DB 노드 캐시나 증분 append 최적화는 포함하지 않는다.
-5. **Merkle consistency proof** (보호 영역): RFC 9162 §2.1.4 consistency 생성·검증.
+5. **Merkle consistency proof — 완료·Accept** (보호 영역): RFC 9162 §2.1.4.1 생성·§2.1.4.2 검증. 사용자가 상세 계획과 경계 조건을 승인했다.
    - `@noble/hashes` 사용. 테스트 벡터는 기본적으로 사람이 작성한다. 이번 세션은 위 사용자 승인 예외에 따라 서브에이전트가 독립 생성한 consistency 2,016개를 준비했다. 벡터 수정은 별도 요청 없이는 하지 않는다.
-   - 경계 조건·변조 proof 거부를 검증하고 Jest에서 ESM 전용 `@noble/*` 로딩을 확인한다.
+   - 4단계 커밋은 `473208f` (`feat: add Merkle roots and inclusion proofs`). 기존 고정 벡터를 변경하지 않고 메인 에이전트가 구현·테스트 작성·실행을 담당했다.
+   - `createConsistencyProof(leafHashes, firstSize)`, `verifyConsistency({firstSize,secondSize,firstRoot,secondRoot,proof})`를 공개한다. 생성기는 현재 트리 전체의 leaf hash 목록을 받고, 검증기는 과거·현재 root와 proof만 사용한다.
+   - 승인된 경계 정책: 크기는 양의 안전한 정수, firstSize <= secondSize다. 같은 크기는 빈 proof와 동일한 root일 때만 성공한다. 크기 0은 두 트리가 모두 빈 경우를 포함해 거부한다. 빈 트리 STH 정책은 6단계에서 별도로 결정한다.
+   - 생성 오류는 TypeError/RangeError, 잘못된 proof·메타데이터는 false다. 32바이트 해시와 proof 길이 최대 54(RFC의 ceil(log2(n))+1 상한)를 검사하며, 인덱스는 정수 나눗셈으로 처리한다. 검증기가 입력 proof에 root를 삽입하지 않도록 별도 cursor로 초기화한다.
+   - Vitest 4,256개(기존 2,167 + 신규 2,089) 통과: 독립 consistency 벡터 2,016개 전체 생성·검증 대조, 모든 proof 노드·두 root 변조, 누락·추가 거부, 크기 1~64 동일 크기 경계, 크기 0·역전·부정확한 수·해시 길이·희소 배열 거부, 입력 불변성·메모리 비공유, 32/52비트 크기의 두 초기화 경로.
+   - 빌드·구현/테스트 타입 검사 통과. 실제 Chrome native ESM에서 동일한 2,016개 벡터·64개 경계와 변조·동결 proof·큰 크기를 검증했다. 설치된 API Jest의 ESM 로드·생성·검증·경계 처리 1개 통과.
+   - 새 의존성·API·DB 변경 없음. 관련 평가 항목인 브라우저에서의 append-only 검증 기반을 마련했으며 STH 서명 검증·DB append·API 연결은 후속 단계다.
 6. **log 모듈**
    - `log_state` `SELECT ... FOR UPDATE` 직렬화 append와 STH Ed25519 서명(`LOG_SIGNING_KEY`)
    - getLatestSth, listSthHistory, getConsistencyProof, listEntries, getInclusionProof (5)
@@ -133,7 +139,7 @@
    - 키 등록·승인과 이후 세션 D의 요청 생성 등은 멤버 변경과 동일한 기관 행 잠금 규칙을 적용하고, 잠금 후 멤버십·역할을 재검증해야 한다.
 8. **브라우저 키·관리 UI**: `apps/web/src/lib/crypto/keys.ts`(보호 영역, 상세 계획 승인 필요, non-extractable, IndexedDB), `/settings/keys`, 기관 키 승인·폐기 UI, 실제 브라우저 검증.
 
-4단계까지 Accept 완료. 남은 검토 단위는 4개다. 5단계 consistency 구현도 보호 영역 상세 계획 승인 후 진행한다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
+5단계까지 Accept 완료. 남은 세션 C 검토 단위는 3개다. 사용자 요청에 따라 로그·STH 전에 전체 저장소 리뷰의 이메일 소유 확인, 기관 수정 권한 경쟁 조건, 54노드 회귀 테스트 보완을 먼저 진행한다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
 
 ### 세션 D (5h): 서명 흐름 완성
 
