@@ -12,17 +12,17 @@
 - 새 의존성은 이유와 대안을 먼저 제시하고, 2주 이상 지난 안정 버전으로 고정한다.
 - 세션 B 후반은 사용자 요청으로 검토 범위를 확대했다: 인증 API → 인증 UI → 기관 API → 대시보드의 4단위. 각 단위의 Accept 후에만 커밋한다.
 
-## 현재 상태 (세션 C 2단계 완료·3단계 착수, 시험 배포 보류, 2026-11-16)
+## 현재 상태 (세션 C 3단계 완료, 시험 배포 보류, 2026-11-16)
 
 | 영역 | 상태 |
 |---|---|
 | 모노레포 | pnpm workspace, TS 6.0 strict, ESLint 10 flat, Prettier, LF 고정 |
 | 로컬 인프라 | `docker-compose.yml`: MySQL 8.4(호스트 3307), SeaweedFS 4.48(S3, 8333) |
-| `packages/shared` | `API_PREFIX`만 있음. ESM, `dist` 빌드, Vitest |
+| `packages/shared` | `API_PREFIX`, JCS 인코더·UTF-8 바이트, payload 타입, 소문자 hex 유틸. ESM, Vitest 70개 |
 | `packages/merkle` | 빈 패키지 (`export {}`) |
 | `apps/api` | NestJS 12, `/api/v1`, 인증·기관·멤버·초대 API 15개, JWT·멤버십 역할 Guard, e2e 125개 |
 | DB | Prisma 7, 13테이블, 마이그레이션 3개, `log_state (1, 0)` 시드 |
-| `apps/web` | Next.js 16 App Router, 인증·대시보드、기관 상세·멤버 관리·설정·초대 UI, 실제 API·TanStack Query 연동 |
+| `apps/web` | Next.js 16 App Router, 인증·대시보드, 기관 상세·멤버 관리·설정·초대 UI, 실제 API·TanStack Query 연동 |
 
 평가 체크리스트 충족: DB 테이블 8개 이상(13개), 인덱스(필수 8개 모두).
 
@@ -91,6 +91,7 @@
    - 스키마·마이그레이션·의존성 변경 없음. 기존 비밀번호 단위 테스트는 재실행하지 않았다.
 2. **기관 상세·초대 UI — 완료·Accept**: `/orgs/[slug]` 멤버 관리·기관 설정, dashboard의 받은 초대 수락·거절, 기관 상세 링크를 한 검토 단위로 구현했다.
    - 1단계 API 커밋: `ee282a4` (`feat: add member management and invitation APIs`).
+   - 2단계 UI 커밋: `b90536a` (`feat: add organization member and invitation UI`).
    - 현재 사용자의 역할은 멤버 목록에서 확인한다. owner에게 초대·역할 변경·멤버 제거·설정 UI를 표시하고 마지막 owner의 변경·제거는 화면에서도 막는다. 제거 전에는 확인 UI를 제공한다.
    - 기관 설정은 `?tab=settings`로 직접 접근 가능하며 owner만 수정한다. 멤버 탭은 기본 경로다. 기관 문서·키 탭은 각각 후속 범위에서 구현한다.
    - 사용자별 기관 상세·멤버·초대 캐시를 사용한다. 초대 응답, 멤버 변경, 기관 설정 저장 후 관련 쿼리를 갱신한다. 본인 강등 시 관리 UI를 숨기고, 본인 제거 시 대시보드로 이동한다.
@@ -98,7 +99,15 @@
    - 웹 ESLint·Next 프로덕션 빌드(TypeScript 포함) 통과. 실제 headless Chrome + tlog_test에서 게스트 보호, owner/비owner 권한, 초대 생성·중복·수락·거절, 새로고침 없는 갱신, 계정 간 캐시 분리, 역할 변경·제거, 설정 저장, 세션 만료, 조회 실패 후 재시도, 본인 강등·제거를 확인했다.
    - 최대 길이의 기관 이름·설명·멤버 이름으로 320/390/768/1024/1440px 가로 넘침이 없었고 스크린샷을 확인했다. 처리되지 않은 브라우저 예외가 없었으며 QA 데이터는 삭제했다.
    - 새 의존성·API 변경 없음. 새 멤버·초대 API 7개와 기존 기관 상세·수정 API를 웹에서 사용한다. 관련 평가 항목인 동적 경로, 권한별 UI, 로딩·오류·입력 검증, 새로고침 없는 상태 갱신, 반응형을 확인했다.
-3. **`packages/shared`**: RFC 8785 JCS canonical encoder, ISSUE·REVOKE·KEY_* payload 타입, hex 검증 유틸, 테스트.
+3. **`packages/shared` — 완료·Accept**: RFC 8785 JCS canonical encoder, ISSUE·REVOKE·KEY_*·STH payload 타입, hex 검증·변환 유틸, 테스트.
+   - `canonicalize(unknown)`는 문자열, `canonicalBytes(unknown)`는 BOM 없는 UTF-8 바이트를 반환한다. RFC 8785 §§3.1–3.2.4에 따라 원시 타입 표기, 재귀적 UTF-16 키 정렬, 배열 순서, 유니코드 원형을 보존한다. 정수처럼 보이는 객체 키도 문자열 순서로 출력한다.
+   - NaN·Infinity, lone surrogate, undefined·BigInt·함수·symbol, 순환 참조, 희소 배열과 추가 배열 속성을 거부한다. 입력은 JSON 원시 값·배열·plain object(null prototype 포함)이며 Date·DTO 인스턴스·getter·toJSON 자동 변환·숨겨진 속성을 허용하지 않는다.
+   - ISSUE·REVOKE 로그 바이트의 구조는 `{ payload, signature }`, KEY_*는 규칙에 명시된 평면 객체다. STH는 `{ treeSize, timestamp, rootHash }`만 서명한다. 기존 API·웹 타입의 일괄 교체는 하지 않는다.
+   - hex 유틸은 소문자·짝수 길이를 검사하고, 필요하면 바이트 길이를 지정한다. 대문자·공백·접두사 등을 자동 보정하지 않는다. 빈 바이트는 일반 변환에서 허용하지만 암호학 필드에는 32/64 등의 길이를 명시해야 한다.
+   - payload 타입은 컴파일 시 구조만 정의한다. UUID·hex 길이·카테고리·leaf index 범위·시간 오차 같은 도메인 검증은 후속 API DTO·서비스에서 수행해야 한다. 인코더는 JSON 파서가 아니므로 원문 JSON의 중복 키 검출은 담당하지 않는다.
+   - Vitest 70개 통과: RFC의 키 정렬·Appendix B 숫자 예제, 직접 명시한 UTF-8 바이트, 잘못된 입력 거부, wire payload 형태, hex 경계값. ESM 빌드, shared 구현·테스트 타입, API·웹 타입 호환성, shared ESLint 통과.
+   - `canonicalBytes`와 `hexToBytes`의 반환 타입은 `Uint8Array<ArrayBuffer>`다. WebCrypto의 `BufferSource`에 타입 단언 없이 전달할 수 있음을 shared 타입 검사에서 확인했다. 평가 항목 중 해시·키·서명 입력 검증의 공통 기반을 마련했으며, 실제 endpoint DTO 연결은 후속 단계다.
+   - 빌드된 동일 ESM을 Node와 실제 headless Chrome에서 로드하여 입력 15개의 바이트 일치, 브라우저의 잘못된 입력 10개 거부와 hex 유틸 동작을 확인했다. 새 의존성·API·DB·보호 영역 변경 없음.
 4. **Merkle root·inclusion proof** (보호 영역): RFC 9162 §2.1 root, §2.1.3 inclusion 생성·검증. 상세 계획 승인 후 구현한다.
 5. **Merkle consistency proof** (보호 영역): RFC 9162 §2.1.4 consistency 생성·검증.
    - `@noble/hashes` 사용. **테스트 벡터(크기 1~64)는 사람이 만든다**. 에이전트는 작성·수정하지 않는다.
@@ -114,7 +123,7 @@
    - 키 등록·승인과 이후 세션 D의 요청 생성 등은 멤버 변경과 동일한 기관 행 잠금 규칙을 적용하고, 잠금 후 멤버십·역할을 재검증해야 한다.
 8. **브라우저 키·관리 UI**: `apps/web/src/lib/crypto/keys.ts`(보호 영역, 상세 계획 승인 필요, non-extractable, IndexedDB), `/settings/keys`, 기관 키 승인·폐기 UI, 실제 브라우저 검증.
 
-2단계까지 Accept 완료. 다음은 3단계 공통 인코딩·payload 타입이며 남은 검토 단위는 6개다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
+3단계까지 Accept 완료. 남은 검토 단위는 5개다. 4단계 Merkle 구현 전에는 보호 영역 상세 계획 승인과 사람이 준비한 테스트 벡터를 확인한다. 세션 C 완료 시 누적 endpoint 25. 배포·Push는 포함하지 않는다.
 
 ### 세션 D (5h): 서명 흐름 완성
 
