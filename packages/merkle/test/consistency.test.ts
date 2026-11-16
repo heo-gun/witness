@@ -158,6 +158,23 @@ describe("RFC 9162 §2.1.4 consistency proofs", () => {
     expect(signingInput).toBeInstanceOf(Uint8Array);
   });
 
+  it("accepts a valid 54-node proof at the maximum safe tree size", () => {
+    const proof = Object.freeze(Array.from({ length: 54 }, (_, index) => at(index)));
+    const firstRoot = nodeHash(at(2), at(0));
+    const secondRoot = proof
+      .slice(3)
+      .reduce((root, sibling) => nodeHash(root, sibling), nodeHash(at(2), nodeHash(at(0), at(1))));
+    const input: ConsistencyInput = {
+      firstSize: 3,
+      secondSize: Number.MAX_SAFE_INTEGER,
+      firstRoot,
+      secondRoot,
+      proof,
+    };
+    expect(verifyConsistency(input)).toBe(true);
+    expect(verifyConsistency({ ...input, proof: proof.slice(0, -1) })).toBe(false);
+  });
+
   it.each([32, 52])("verifies a power-of-two %s-bit tree extended by one leaf", (bits) => {
     const firstSize = 2 ** bits;
     const firstRoot = at(0);
