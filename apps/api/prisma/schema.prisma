@@ -14,6 +14,11 @@ enum Role {
   issuer
 }
 
+enum EmailTokenPurpose {
+  verify_email
+  reset_password
+}
+
 enum InvitationStatus {
   pending
   accepted
@@ -63,12 +68,13 @@ enum LogEntryType {
 }
 
 model User {
-  id           String   @id @default(uuid(7)) @db.Char(36)
-  email        String   @unique @db.VarChar(254)
-  name         String   @db.VarChar(50)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  tokenVersion Int      @default(0) @map("token_version")
-  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id              String    @id @default(uuid(7)) @db.Char(36)
+  email           String    @unique @db.VarChar(254)
+  name            String    @db.VarChar(50)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  tokenVersion    Int       @default(0) @map("token_version")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
 
   memberships     Membership[]
   invitationsSent Invitation[]
@@ -79,8 +85,22 @@ model User {
   requestsToSign  SignatureRequest[] @relation("SignatureSigner")
   logEntries      LogEntry[]
   revocations     Revocation[]
+  emailTokens     EmailToken[]
 
   @@map("users")
+}
+
+model EmailToken {
+  userId    String            @map("user_id") @db.Char(36)
+  purpose   EmailTokenPurpose
+  tokenHash String            @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime          @map("expires_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, purpose])
+  @@index([expiresAt])
+  @@map("email_tokens")
 }
 
 model Organization {
