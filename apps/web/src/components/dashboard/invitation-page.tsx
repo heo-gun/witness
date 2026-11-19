@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSession } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { AuthForm } from "@/components/auth/auth-form";
+import { EmailAuthForm } from "@/components/auth/email-auth-form";
 import { Button } from "@/components/ui/button";
 import { ReceivedInvitations } from "./received-invitations";
 
@@ -19,7 +20,11 @@ export function InvitationPage({ id }: { id: string }) {
           <Button onClick={() => void session.refetch()}>{ko.common.retry}</Button>
         </div>
       ) : session.data ? (
-        <ReceivedInvitations key={session.data.id} userId={session.data.id} invitationId={id} />
+        session.data.emailVerifiedAt ? (
+          <ReceivedInvitations key={session.data.id} userId={session.data.id} invitationId={id} />
+        ) : (
+          <EmailAuthForm mode="verify_email" email={session.data.email} />
+        )
       ) : (
         <>
           <p className="mb-5">{ko.invitations.loginHint}</p>

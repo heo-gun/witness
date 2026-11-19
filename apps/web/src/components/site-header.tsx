@@ -38,7 +38,10 @@ export function SiteHeader() {
           />
           {ko.brand}
         </Link>
-        <nav aria-label={ko.auth.eyebrow} className="flex min-w-0 items-center gap-2 sm:gap-4">
+        <nav
+          aria-label={ko.auth.eyebrow}
+          className="flex min-w-0 flex-wrap justify-end items-center gap-2 sm:gap-4"
+        >
           {session.isPending ? (
             <span role="status" className="text-xs text-muted-foreground">
               {ko.common.loading}
@@ -69,6 +72,11 @@ export function SiteHeader() {
               >
                 {session.data.name}
               </span>
+              {session.data.emailVerifiedAt && (
+                <Link href="/settings/password" className="text-xs underline">
+                  {ko.emailAuth.change}
+                </Link>
+              )}
               <Button
                 variant="outline"
                 disabled={mutation.isPending}

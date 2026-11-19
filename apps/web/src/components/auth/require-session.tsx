@@ -7,6 +7,7 @@ import { useSession } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmailAuthForm } from "./email-auth-form";
 
 export function RequireSession({ children }: { children: ReactNode }) {
   const session = useSession();
@@ -40,6 +41,13 @@ export function RequireSession({ children }: { children: ReactNode }) {
         className="mx-auto max-w-6xl px-5 py-16 text-muted-foreground"
       >
         {ko.common.loading}
+      </main>
+    );
+  }
+  if (!session.data.emailVerifiedAt) {
+    return (
+      <main id="main-content" className="mx-auto max-w-xl px-5 py-16">
+        <EmailAuthForm mode="verify_email" email={session.data.email} />
       </main>
     );
   }

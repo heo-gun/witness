@@ -5,6 +5,7 @@ export interface User {
   email: string;
   name: string;
   createdAt: string;
+  emailVerifiedAt: string | null;
 }
 
 export interface LoginInput {
@@ -17,6 +18,21 @@ export interface RegisterInput extends LoginInput {
 }
 
 export const authKeys = { me: ["auth", "me"] as const };
+
+export type EmailPurpose = "verify_email" | "reset_password";
+export function requestEmail(email: string, purpose: EmailPurpose): Promise<{ accepted: boolean }> {
+  return apiRequest("/auth/email/request", { method: "POST", body: { email, purpose } });
+}
+export function confirmEmail(
+  token: string,
+  purpose: EmailPurpose,
+  password: string,
+): Promise<void> {
+  return apiRequest("/auth/email/confirm", { method: "POST", body: { token, purpose, password } });
+}
+export function changePassword(currentPassword: string, password: string): Promise<void> {
+  return apiRequest("/auth/password", { method: "POST", body: { currentPassword, password } });
+}
 
 export function register(input: RegisterInput): Promise<User> {
   return apiRequest("/auth/register", { method: "POST", body: input });

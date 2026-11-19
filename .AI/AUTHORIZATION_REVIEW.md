@@ -1,14 +1,14 @@
 # 권한 점검 — 2026-11-19
 
-범위: 현재 등록된 API 16개 전체. 공통 prefix는 `/api/v1`이다. controller뿐 아니라 Guard, service, Prisma 조회 조건과 트랜잭션을 확인했다. `REVISE.md`와 사용자의 후속 승인에 따라 점검·테스트는 자동 진행한다.
+범위: 현재 등록된 API 19개 전체. 공통 prefix는 `/api/v1`이다. controller뿐 아니라 Guard, service, Prisma 조회 조건과 트랜잭션을 확인했다. `REVISE.md`와 사용자의 후속 승인에 따라 점검·테스트는 자동 진행한다.
 
 | Endpoint | 필요한 권한 | 현재 검사 | 문제 여부 |
 |---|---|---|---|
-| POST /auth/register | 공개 가입 | JSON Guard, IP당 5회/분, RegisterDto whitelist, 이메일 unique, 허용 필드만 저장 | 이메일 소유 미검증은 잔여 위험. 역할·인증 여부 입력으로 권한 부여 불가 |
+| POST /auth/register | 공개 가입 | JSON Guard, IP당 5회/분, RegisterDto whitelist, 이메일 unique, 미인증 가입 후 인증 메일 | 역할·인증 여부 입력으로 권한 부여 불가 |
 | POST /auth/login | 계정 비밀번호 | JSON Guard, IP당 10회/분, LoginDto, Argon2 검증 후 사용자 id·버전으로 15분 JWT 발급 | 객체 접근 우회 미발견 |
 | POST /auth/logout | 로그인 본인 | JWT·DB 버전 검증 후 token_version 원자 증가·쿠키 삭제 | 해당 사용자의 모든 기존 JWT 거부. 진행 중 요청을 소급 취소하지는 않음 |
 | GET /auth/me | 로그인 본인 | 검증한 JWT sub로 DB 사용자 조회, 공개 필드 select | 다른 사용자 id 지정 경로 없음 |
-| POST /orgs | 로그인 사용자 | JWT의 사용자 id로 기관과 owner 멤버십 원자적 생성 | 입력으로 다른 생성자 지정 불가. SSO 전 비밀번호 계정의 기관 생성은 허용 |
+| POST /orgs | 이메일 인증된 사용자 | JWT + VerifiedEmailGuard + 트랜잭션에서 인증 재확인, 기관과 owner 멤버십 생성 | 미인증 기존 계정도 기관 생성 불가 |
 | GET /orgs | 로그인 본인의 기관 | memberships.some.userId = 현재 사용자 | 다른 기관 목록 노출 미발견 |
 | GET /orgs/:slug | 해당 기관 멤버 | RolesGuard가 slug와 현재 사용자 멤버십 확인 | 다른 기관 owner 포함 비멤버 차단 |
 | PATCH /orgs/:slug | 해당 기관 owner | RolesGuard + 기관 잠금 후 owner 재검증 | 강등 후 쓰기 경쟁 회귀 테스트 유지 |
@@ -16,12 +16,17 @@
 | PATCH /orgs/:slug/members/:userId | 해당 기관 owner, 대상은 같은 기관 멤버 | 잠금 후 owner 재검증, 복합키 userId_orgId 조회, 마지막 owner·키·요청 보호 | 감사 로그 누락 보완. 다른 기관 userId는 404 |
 | DELETE /orgs/:slug/members/:userId | 해당 기관 owner, 대상은 같은 기관 멤버 | 위와 같은 잠금·범위·마지막 owner 검사 | 다른 기관 userId는 404, 멤버십 미변경 |
 | POST /orgs/:slug/invitations | 해당 기관 owner | Guard + 잠금 후 owner 재검증, DTO의 signer/issuer 제한 | owner 초대 허용 문제 수정(400) |
-| GET /me/invitations | 로그인한 계정의 대상 초대 | DB에서 읽은 현재 계정 이메일 + pending + 미만료, 해시·토큰 제외 | 이메일 선점자는 초대 메타데이터를 볼 수 있음. 토큰 없이 응답 불가 |
+| GET /me/invitations | 이메일 인증된 계정의 대상 초대 | VerifiedEmailGuard + DB 이메일 + pending + 미만료, 해시·토큰 제외 | 미인증 선점 계정은 메타데이터 조회도 403 |
 | POST /invitations/:id/accept | 대상 이메일 계정 + 비밀 토큰 | JWT, DTO, 이메일, 잠금 후 상태·만료·해시 상수 시간 비교, 기존 멤버 검사 | 과거 owner 초대의 유효 토큰 수락도 403으로 차단 |
 | POST /invitations/:id/decline | 대상 이메일 계정 + 비밀 토큰 | 수락과 같은 신원·토큰 검사, 처리 후 토큰 해시 제거 | 다른 계정·잘못된 토큰 차단. 과거 owner 초대 거절은 허용 |
 | DELETE /orgs/:slug/invitations/:id | 해당 기관 owner | Guard + 잠금 후 owner 재검증, id와 orgId 함께 조회 | 다른 기관 owner의 초대 id 교체 공격 차단(404), 응답과 직렬화 |
+| POST /auth/email/request | 공개, 이메일 소유는 아직 미확인 | DTO, IP당 3회/분, 사용자·용도별 1분 재발송 간격, 일반화된 202 | 메일로만 전달, 응답·로그에 토큰 없음. 계정 존재 여부에 따른 처리 시간까지 동일하지는 않음 |
+| POST /auth/email/confirm | 유효한 용도별 메일 토큰 | DTO, IP당 10회/분, 15분 만료, 사용자 잠금 후 재확인·일회 소비 | 비밀번호 교체·인증·버전 증가·모든 토큰 삭제 원자적 처리. 과거 미인증 멤버십/미폐기 키는 자동 복구 거부 |
+| POST /auth/password | 로그인 + 현재 비밀번호 | JWT, DTO, IP당 5회/분, 비밀번호·버전 조건부 갱신 | 비밀번호 변경과 세션/복구 토큰 무효화 원자적 처리 |
 
 공통: 변경 요청은 JSON이며 cross-site 요청을 거부한다. 입력 DTO는 whitelist와 forbidNonWhitelisted를 사용한다. 권한 판단에는 클라이언트가 보낸 userId/role을 현재 행위자로 사용하지 않는다. userId 경로 값은 변경 대상일 뿐이다.
+
+이메일 인증 적용: 기관·초대 controller와 RolesGuard는 미인증 계정을 차단한다. 기관 생성, 기관 잠금 후 owner 쓰기, 초대 응답, 역할 변경 대상에서도 DB 인증 여부를 재확인한다. 로그인·me·로그아웃·메일 요청·비밀번호 설정은 미인증 계정에서도 가능하다.
 
 ## 이번 보완과 회귀 검증
 
@@ -44,10 +49,11 @@ owner 제한 검증 138개에 인증 보강을 더해 API e2e 150개와 API Type
 
 ## 남은 위험
 
-- 추가 리뷰의 요청 제한과 서버 측 세션 무효화를 구현했다. JWT는 15분이며 로그아웃에서 token_version을 증가시킨다. 탈취 토큰은 무효화 또는 만료 전까지 사용 가능하며 SSO 로그인만으로 해결되지 않는다. 비밀번호 변경 API는 아직 없다.
+- JWT는 15분이며 로그아웃·비밀번호 변경·메일 인증/복구에서 token_version을 증가시킨다. 탈취 토큰은 무효화 또는 만료 전까지 사용 가능하며 SSO 로그인만으로 해결되지 않는다.
 - 요청 제한은 단일 API 프로세스 메모리이며 재시작·다중 인스턴스·분산 IP 공격을 포괄하지 않는다. 현재 프록시 헤더를 신뢰하지 않아 Next rewrite 경유 요청은 IP 한도를 공유할 수 있다. 배포 전 신뢰할 프록시 구성과 필요 시 공유 카운터를 확정한다.
-- 사용자는 SSO 전 초대 메타데이터 노출 위험을 수용했다. 발표에서는 이 한계와 토큰에 의한 수락 보호를 구분하고, SSO 후 검증된 이메일만 목록 조회·수락에 사용하며 기존 미검증 세션도 차단할 계획임을 설명한다. 제공자의 이메일 검증 보장과 실제 접근 차단 검증이 끝나야 해결로 표시한다.
-- 토큰은 전달 경로를 통제할 뿐 실명·이메일 소유를 증명하지 않는다. 잘못 전달되거나 유출된 토큰과 선점 계정이 결합하면 signer/issuer 권한이 부여될 수 있다. SSO 신원 바인딩은 별도 구현이 필요하다.
-- 이메일 선점자는 아직 가입·로그인을 할 수 있고 해당 이메일의 초대 메타데이터를 조회할 수 있다. 이 점을 전체 신원 문제 해결로 보고하지 않는다.
+- 미인증 이메일 선점자는 가입·로그인할 수 있지만 기관·초대 접근은 차단된다. 메일 소유자는 새 비밀번호 설정으로 기존 세션을 폐기한다. 이메일 소유는 실명·소속의 증명이 아니며 메일 계정 자체가 탈취되면 보호할 수 없다.
+- 기존 데이터는 사용자 확인상 테스트용이다. 데이터는 삭제하지 않으며 기존 미인증 멤버십이나 pending/active 키가 있으면 자동 복구하지 않는다. 키 복구·재등록 정책과 구현은 세션 C에서 이어간다. 새로운 인증 계정으로 개발 시나리오를 진행한다.
+- 실제 외부 SMTP 전달·스팸함·운영 인증서는 운영 설정 후 확인해야 한다. 발송 실패는 토큰을 삭제하고 식별 정보 없는 오류를 기록하며, 공개 요청 응답은 계정 존재 여부와 무관하게 202다.
+- SPARCS SSO는 발표 이후 승인·이용 가능 여부 확인이 필요한 장기 검토 사항이다.
 - owner는 기존 멤버를 승격할 수 있으므로 승격 전 본인 확인이 필요하다. 키 승인 확인 단계는 세션 C에 포함한다.
 - 테스트는 로컬 tlog_test 대상이다. 배포 프록시·TLS·CORS·운영 권한 구성 검증은 아직 수행하지 않았다.

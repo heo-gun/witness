@@ -32,8 +32,8 @@ export function AuthForm({
       isRegister ? register(input) : login({ email: input.email, password: input.password }),
     onSuccess: async (user) => {
       if (isRegister) {
-        toast.success(ko.auth.registered);
-        router.replace("/login");
+        toast.success(ko.emailAuth.sent);
+        router.replace("/verify-email");
       } else {
         await updateSession(queryClient, user);
         if (!stayOnPage) router.replace("/dashboard");
@@ -193,6 +193,11 @@ export function AuthForm({
               : ko.common.login}
         </Button>
       </form>
+      {!isRegister && (
+        <Link href="/recover" className="mt-5 inline-block text-sm underline">
+          {ko.emailAuth.forgot}
+        </Link>
+      )}
       <p className="mt-7 border-t border-border pt-6 text-center text-sm text-muted-foreground">
         {isRegister ? ko.auth.hasAccount : ko.auth.noAccount}{" "}
         <Link
