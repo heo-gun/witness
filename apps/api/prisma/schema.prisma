@@ -67,6 +67,7 @@ model User {
   email        String   @unique @db.VarChar(254)
   name         String   @db.VarChar(50)
   passwordHash String   @map("password_hash") @db.VarChar(255)
+  tokenVersion Int      @default(0) @map("token_version")
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   memberships     Membership[]
