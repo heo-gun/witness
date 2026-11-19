@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRef } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
-import { inviteMember } from "@/api/invitations";
+import { cancelInvitation, inviteMember } from "@/api/invitations";
 import type { Role } from "@/api/members";
 import { ko } from "@/lib/i18n/ko";
 import { useWorkspaceError, workspaceErrorMessage } from "@/lib/workspace";
@@ -18,6 +18,7 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
   const formRef = useRef<HTMLFormElement>(null);
   const handleError = useWorkspaceError(userId, slug);
   const mutation = useMutation({
+    gcTime: 0,
     mutationFn: (input: { email: string; role: Role }) => inviteMember(slug, input),
     onSuccess: () => {
       formRef.current?.reset();
@@ -28,9 +29,15 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
       await handleError(error);
     },
   });
+  const cancellation = useMutation({
+    mutationFn: (id: string) => cancelInvitation(slug, id),
+    onSuccess: () => mutation.reset(),
+    onError: handleError,
+  });
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (mutation.isPending) return;
+    if (mutation.isPending || cancellation.isPending) return;
+    cancellation.reset();
     const data = new FormData(event.currentTarget);
     mutation.mutate({
       email: String(data.get("email") ?? "")
@@ -53,7 +60,10 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
         aria-busy={mutation.isPending}
         className="mt-6 space-y-5"
       >
-        <fieldset disabled={mutation.isPending} className="space-y-5 disabled:opacity-70">
+        <fieldset
+          disabled={mutation.isPending || cancellation.isPending}
+          className="space-y-5 disabled:opacity-70"
+        >
           <div className="space-y-2">
             <label htmlFor="invite-email" className="text-sm font-medium">
               {ko.auth.email}
@@ -83,10 +93,37 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
             {workspaceErrorMessage(mutation.error, ko.workspace.inviteConflict)}
           </p>
         )}
-        <Button type="submit" className="w-full" disabled={mutation.isPending}>
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={mutation.isPending || cancellation.isPending}
+        >
           {mutation.isPending ? ko.workspace.inviting : ko.workspace.invite}
         </Button>
       </form>
+      {mutation.data && (
+        <div className="mt-5 space-y-3" role="status">
+          <p className="text-sm">{ko.invitations.shareHint}</p>
+          <Input
+            aria-label={ko.invitations.link}
+            readOnly
+            value={`${window.location.origin}${mutation.data.invitationPath}`}
+            onFocus={(event) => event.target.select()}
+          />
+          <Button
+            variant="outline"
+            disabled={mutation.isPending || cancellation.isPending}
+            onClick={() => cancellation.mutate(mutation.data.id)}
+          >
+            {ko.invitations.cancel}
+          </Button>
+          {cancellation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {workspaceErrorMessage(cancellation.error, ko.invitations.conflict)}
+            </p>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

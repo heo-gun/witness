@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
@@ -27,6 +27,7 @@ describe("Members and invitations (e2e)", () => {
   const slug = `${prefix}-main`;
   const base = `/api/v1/orgs/${slug}`;
   const userIds: string[] = [];
+  const tokens = new Map<string, string>();
 
   async function actor(label: string): Promise<Actor> {
     const user = await prisma.user.create({
@@ -50,14 +51,26 @@ describe("Members and invitations (e2e)", () => {
       .set("Cookie", owner.cookie)
       .send({ email, role })
       .expect(201);
-    return res.body as { id: string; email: string; role: string; status: string };
+    const { invitationPath, ...invitation } = res.body as {
+      id: string;
+      email: string;
+      role: string;
+      status: string;
+      expiresAt: string;
+      invitationPath: string;
+    };
+    const token = invitationPath.split("#")[1];
+    if (!token) throw new Error("Creation response did not include an invitation token");
+    tokens.set(invitation.id, token);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    return invitation;
   }
 
   function respond(id: string, who: Actor, action = "accept") {
     return request(app.getHttpServer())
       .post(`/api/v1/invitations/${id}/${action}`)
       .set("Cookie", who.cookie)
-      .send({});
+      .send({ token: tokens.get(id) ?? "0".repeat(64) });
   }
 
   beforeAll(async () => {
@@ -239,6 +252,161 @@ describe("Members and invitations (e2e)", () => {
       .expect(403);
   });
 
+  it("blocks an email squatter from accepting an invitation without its secret", async () => {
+    const email = `${prefix}-squatter@example.com`;
+    const registration = await request(app.getHttpServer())
+      .post("/api/v1/auth/register")
+      .send({ email, name: "squatter", password: "squatter-test-password" })
+      .expect(201);
+    const id = (registration.body as { id: string }).id;
+    userIds.push(id);
+    const login = await request(app.getHttpServer())
+      .post("/api/v1/auth/login")
+      .send({ email, password: "squatter-test-password" })
+      .expect(200);
+    const cookie = login.get("Set-Cookie")?.[0];
+    if (!cookie) throw new Error("Login did not set a session cookie");
+    const attacker = { id, email, cookie };
+    const pending = await invite(attacker.email, "signer");
+    await request(app.getHttpServer())
+      .post(`/api/v1/invitations/${pending.id}/accept`)
+      .set("Cookie", attacker.cookie)
+      .send({})
+      .expect(400);
+    expect(await prisma.membership.count({ where: { orgId, userId: attacker.id } })).toBe(0);
+  });
+
+  it("stores only a hash, gives a 72-hour expiry and never lists the secret", async () => {
+    const recipient = await actor("secret");
+    const before = Date.now();
+    const pending = await invite(recipient.email);
+    const token = tokens.get(pending.id);
+    if (!token) throw new Error("Missing test token");
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    const stored = await prisma.invitation.findUniqueOrThrow({ where: { id: pending.id } });
+    expect(stored.tokenHash).toBe(createHash("sha256").update(token).digest("hex"));
+    if (!stored.expiresAt) throw new Error("Invitation did not expire");
+    expect(stored.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 72 * 60 * 60 * 1000);
+    expect(stored.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + 72 * 60 * 60 * 1000);
+    const list = await request(app.getHttpServer())
+      .get("/api/v1/me/invitations")
+      .set("Cookie", recipient.cookie)
+      .expect(200);
+    expect(JSON.stringify(list.body)).not.toMatch(/tokenHash|invitationPath/);
+    expect(JSON.stringify(list.body)).not.toContain(token);
+    await respond(pending.id, recipient).expect(200);
+    expect(
+      (await prisma.invitation.findUniqueOrThrow({ where: { id: pending.id } })).tokenHash,
+    ).toBeNull();
+  });
+
+  it.each(["accept", "decline"])(
+    "rejects malformed and incorrect tokens for %s",
+    async (action) => {
+      const recipient = await actor(`tamper-${action}`);
+      const pending = await invite(recipient.email);
+      for (const body of [
+        {},
+        { token: null },
+        { token: "a".repeat(63) },
+        { token: "A".repeat(64) },
+        { token: "0".repeat(64), extra: true },
+      ]) {
+        await request(app.getHttpServer())
+          .post(`/api/v1/invitations/${pending.id}/${action}`)
+          .set("Cookie", recipient.cookie)
+          .send(body)
+          .expect(400);
+      }
+      await request(app.getHttpServer())
+        .post(`/api/v1/invitations/${pending.id}/${action}`)
+        .set("Cookie", recipient.cookie)
+        .send({ token: "0".repeat(64) })
+        .expect(403);
+      await respond(pending.id, outsider, action).expect(403);
+      expect(
+        (await prisma.invitation.findUniqueOrThrow({ where: { id: pending.id } })).status,
+      ).toBe("pending");
+      expect(await prisma.membership.count({ where: { orgId, userId: recipient.id } })).toBe(0);
+    },
+  );
+
+  it.each(["expired", "legacy"])(
+    "rejects %s invitations, omits them and allows a replacement",
+    async (kind) => {
+      const recipient = await actor(kind);
+      const pending = await invite(recipient.email);
+      await prisma.invitation.update({
+        where: { id: pending.id },
+        data: kind === "expired" ? { expiresAt: new Date() } : { tokenHash: null, expiresAt: null },
+      });
+      await respond(pending.id, recipient).expect(409);
+      await respond(pending.id, recipient, "decline").expect(409);
+      const list = await request(app.getHttpServer())
+        .get("/api/v1/me/invitations")
+        .set("Cookie", recipient.cookie)
+        .expect(200);
+      expect(list.body).toEqual([]);
+      const replacement = await invite(recipient.email);
+      expect(tokens.get(replacement.id)).not.toBe(tokens.get(pending.id));
+      await respond(replacement.id, recipient).expect(200);
+    },
+  );
+
+  it("restricts cancellation to an owner of the same organization and prevents replay", async () => {
+    const recipient = await actor("cancel");
+    const pending = await invite(recipient.email);
+    const route = `${base}/invitations/${pending.id}`;
+    await request(app.getHttpServer()).delete(route).expect(401);
+    for (const who of [recipient, signer, outsider]) {
+      await request(app.getHttpServer())
+        .delete(route)
+        .set("Cookie", who.cookie)
+        .send({})
+        .expect(403);
+    }
+    await request(app.getHttpServer())
+      .delete(`/api/v1/orgs/${prefix}-other/invitations/${pending.id}`)
+      .set("Cookie", outsider.cookie)
+      .send({})
+      .expect(404);
+    const cancelled = await request(app.getHttpServer())
+      .delete(route)
+      .set("Cookie", owner.cookie)
+      .send({})
+      .expect(200);
+    expect(cancelled.body).toMatchObject({ status: "cancelled" });
+    expect(
+      (await prisma.invitation.findUniqueOrThrow({ where: { id: pending.id } })).tokenHash,
+    ).toBeNull();
+    await respond(pending.id, recipient).expect(409);
+    await respond(pending.id, recipient, "decline").expect(409);
+    await request(app.getHttpServer())
+      .delete(route)
+      .set("Cookie", owner.cookie)
+      .send({})
+      .expect(409);
+    await invite(recipient.email);
+  });
+
+  it("serializes acceptance against cancellation", async () => {
+    const recipient = await actor("cancel-race");
+    const pending = await invite(recipient.email);
+    const results = await Promise.all([
+      respond(pending.id, recipient),
+      request(app.getHttpServer())
+        .delete(`${base}/invitations/${pending.id}`)
+        .set("Cookie", owner.cookie)
+        .send({}),
+    ]);
+    expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
+    const final = await prisma.invitation.findUniqueOrThrow({ where: { id: pending.id } });
+    expect(final.tokenHash).toBeNull();
+    expect(await prisma.membership.count({ where: { orgId, userId: recipient.id } })).toBe(
+      final.status === "accepted" ? 1 : 0,
+    );
+  });
+
   it("normalizes invitation email, allows an unregistered address and returns MVP fields", async () => {
     const email = `${prefix}-future@example.com`;
     const result = await invite(`  ${email.toUpperCase()}  `);
@@ -250,6 +418,7 @@ describe("Members and invitations (e2e)", () => {
       status: "pending",
       invitedBy: owner.id,
       createdAt: expect.any(String),
+      expiresAt: expect.any(String),
       org: { id: orgId, name: "멤버 테스트", slug },
     });
     const future = await actor("future");
@@ -539,6 +708,7 @@ describe("Members and invitations (e2e)", () => {
       () => request(app.getHttpServer()).patch(`${base}/members/${signer.id}`),
       () => request(app.getHttpServer()).delete(`${base}/members/${signer.id}`),
       () => request(app.getHttpServer()).post(`${base}/invitations`),
+      () => request(app.getHttpServer()).delete(`${base}/invitations/${pending.id}`),
       () => request(app.getHttpServer()).post(`/api/v1/invitations/${pending.id}/accept`),
       () => request(app.getHttpServer()).post(`/api/v1/invitations/${pending.id}/decline`),
     ];

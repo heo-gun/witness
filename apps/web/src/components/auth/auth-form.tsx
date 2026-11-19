@@ -14,7 +14,13 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+export function AuthForm({
+  mode,
+  stayOnPage = false,
+}: {
+  mode: "login" | "register";
+  stayOnPage?: boolean;
+}) {
   const isRegister = mode === "register";
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -30,7 +36,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         router.replace("/login");
       } else {
         await updateSession(queryClient, user);
-        router.replace("/dashboard");
+        if (!stayOnPage) router.replace("/dashboard");
       }
     },
     onError: (error) => toast.error(authErrorMessage(error)),

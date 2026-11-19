@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   ConflictException,
   ForbiddenException,
@@ -21,6 +22,7 @@ const INVITATION_SELECT = {
   invitedById: true,
   status: true,
   createdAt: true,
+  expiresAt: true,
   org: { select: { id: true, name: true, slug: true } },
 } satisfies Prisma.InvitationSelect;
 
@@ -45,29 +47,54 @@ export class InvitationsService {
       });
       if (member) throw new ConflictException("User is already a member");
       const pending = await tx.invitation.findFirst({
-        where: { orgId, email: input.email, status: "pending" },
+        where: { orgId, email: input.email, status: "pending", expiresAt: { gt: new Date() } },
         select: { id: true },
       });
       if (pending) throw new ConflictException("A pending invitation already exists");
-      return presentInvitation(
+      const token = randomBytes(32).toString("hex");
+      const invitation = presentInvitation(
         await tx.invitation.create({
-          data: { orgId, invitedById: actorId, email: input.email, role: input.role },
+          data: {
+            orgId,
+            invitedById: actorId,
+            email: input.email,
+            role: input.role,
+            tokenHash: createHash("sha256").update(token).digest("hex"),
+            expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+          },
           select: INVITATION_SELECT,
         }),
       );
+      return { ...invitation, invitationPath: `/invitations/${invitation.id}#${token}` };
     });
   }
 
   async listMyInvitations(email: string) {
     const invitations = await this.prisma.invitation.findMany({
-      where: { email, status: "pending" },
+      where: { email, status: "pending", expiresAt: { gt: new Date() } },
       select: INVITATION_SELECT,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
     return invitations.map(presentInvitation);
   }
 
-  async respond(id: string, user: SessionUser, status: "accepted" | "declined") {
+  async cancel(orgId: string, actorId: string, id: string) {
+    return this.members.asOwner(orgId, actorId, async (tx) => {
+      const current = await tx.invitation.findFirst({ where: { id, orgId } });
+      if (!current) throw new NotFoundException("Invitation not found");
+      if (current.status !== "pending")
+        throw new ConflictException("Invitation is no longer pending");
+      return presentInvitation(
+        await tx.invitation.update({
+          where: { id },
+          data: { status: "cancelled", tokenHash: null, respondedAt: new Date() },
+          select: INVITATION_SELECT,
+        }),
+      );
+    });
+  }
+
+  async respond(id: string, user: SessionUser, status: "accepted" | "declined", token: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { id },
       select: { orgId: true, email: true },
@@ -83,6 +110,11 @@ export class InvitationsService {
         if (!current) throw new NotFoundException("Invitation not found");
         if (current.status !== "pending")
           throw new ConflictException("Invitation has already been answered");
+        if (!current.tokenHash || !current.expiresAt || current.expiresAt.getTime() <= Date.now())
+          throw new ConflictException("Invitation has expired");
+        const suppliedHash = createHash("sha256").update(token).digest();
+        if (!timingSafeEqual(Buffer.from(current.tokenHash, "hex"), suppliedHash))
+          throw new ForbiddenException("Invalid invitation token");
         if (status === "accepted") {
           const existing = await tx.membership.findUnique({
             where: { userId_orgId: { userId: user.id, orgId: current.orgId } },
@@ -95,7 +127,7 @@ export class InvitationsService {
         return presentInvitation(
           await tx.invitation.update({
             where: { id },
-            data: { status, respondedAt: new Date() },
+            data: { status, respondedAt: new Date(), tokenHash: null },
             select: INVITATION_SELECT,
           }),
         );
