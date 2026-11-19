@@ -25,6 +25,7 @@ export async function updateSession(queryClient: QueryClient, user: User | null)
 
 export function authErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.status === 429) return ko.common.rateLimited;
     if (error.status === 401) return ko.auth.invalidCredentials;
     if (error.status === 409) return ko.auth.duplicateEmail;
     if (error.status === 400) return ko.auth.invalidInput;

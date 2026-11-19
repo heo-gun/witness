@@ -19,6 +19,7 @@ export function workspaceErrorMessage(
   conflict: string = ko.common.serverError,
 ): string {
   if (!(error instanceof ApiError)) return ko.common.networkError;
+  if (error.status === 429) return ko.common.rateLimited;
   if (error.status === 401) return ko.orgs.sessionExpired;
   if (error.status === 403) return ko.workspace.forbidden;
   if (error.status === 404) return ko.workspace.notFound;

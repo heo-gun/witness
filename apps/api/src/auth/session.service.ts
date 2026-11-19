@@ -19,8 +19,15 @@ export class SessionService {
     private readonly prisma: PrismaService,
   ) {}
 
-  issue(userId: string): Promise<string> {
-    return this.jwt.signAsync({ sub: userId });
+  issue(userId: string, tokenVersion: number): Promise<string> {
+    return this.jwt.signAsync({ sub: userId, ver: tokenVersion });
+  }
+
+  async revokeAll(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    });
   }
 
   async authenticate(token: string): Promise<SessionUser> {
@@ -33,16 +40,20 @@ export class SessionService {
     if (
       typeof payload.sub !== "string" ||
       !isUUID(payload.sub) ||
-      typeof payload.exp !== "number"
+      typeof payload.exp !== "number" ||
+      typeof payload.ver !== "number" ||
+      !Number.isSafeInteger(payload.ver) ||
+      payload.ver < 0
     ) {
       throw new UnauthorizedException("Invalid session");
     }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: { id: true, email: true, name: true, createdAt: true, tokenVersion: true },
     });
-    if (!user) throw new UnauthorizedException("Invalid session");
-    return user;
+    if (!user || user.tokenVersion !== payload.ver)
+      throw new UnauthorizedException("Invalid session");
+    return { id: user.id, email: user.email, name: user.name, createdAt: user.createdAt };
   }
 }

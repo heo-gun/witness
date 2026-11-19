@@ -2,7 +2,7 @@ import type { JwtModuleOptions } from "@nestjs/jwt";
 import type { CookieOptions } from "express";
 
 export const SESSION_COOKIE = "tlog_session";
-export const SESSION_SECONDS = 3600;
+export const SESSION_SECONDS = 15 * 60;
 
 export function getJwtOptions(): JwtModuleOptions {
   const secret = process.env.JWT_SECRET;

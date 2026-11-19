@@ -37,6 +37,16 @@ export class MembersService {
       const member = await this.getMember(tx, orgId, userId);
       if (member.role !== role) {
         await this.ensureMutable(tx, orgId, userId, member.role);
+        await tx.auditLog.create({
+          data: {
+            orgId,
+            actorId,
+            action: "MEMBER_ROLE_CHANGED",
+            targetType: "membership",
+            targetId: userId,
+            metadata: { previousRole: member.role, role },
+          },
+        });
       }
       return tx.membership.update({
         where: { userId_orgId: { userId, orgId } },

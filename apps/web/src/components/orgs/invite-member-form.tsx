@@ -5,7 +5,6 @@ import { useRef } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
 import { cancelInvitation, inviteMember } from "@/api/invitations";
-import type { Role } from "@/api/members";
 import { ko } from "@/lib/i18n/ko";
 import { useWorkspaceError, workspaceErrorMessage } from "@/lib/workspace";
 import { Button } from "@/components/ui/button";
@@ -19,7 +18,7 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
   const handleError = useWorkspaceError(userId, slug);
   const mutation = useMutation({
     gcTime: 0,
-    mutationFn: (input: { email: string; role: Role }) => inviteMember(slug, input),
+    mutationFn: (input: { email: string; role: "signer" | "issuer" }) => inviteMember(slug, input),
     onSuccess: () => {
       formRef.current?.reset();
       toast.success(ko.workspace.invited);
@@ -39,11 +38,13 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
     if (mutation.isPending || cancellation.isPending) return;
     cancellation.reset();
     const data = new FormData(event.currentTarget);
+    const role = data.get("role");
+    if (role !== "signer" && role !== "issuer") return;
     mutation.mutate({
       email: String(data.get("email") ?? "")
         .trim()
         .toLowerCase(),
-      role: String(data.get("role")) as Role,
+      role,
     });
   }
   return (
@@ -84,7 +85,7 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
               {ko.workspace.role}
             </label>
             <Select id="invite-role" name="role" defaultValue="issuer">
-              <RoleOptions />
+              <RoleOptions allowOwner={false} />
             </Select>
           </div>
         </fieldset>

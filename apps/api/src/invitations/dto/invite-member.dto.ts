@@ -1,8 +1,10 @@
 import { Transform } from "class-transformer";
-import { IsEmail, MaxLength } from "class-validator";
-import { ChangeRoleDto } from "../../members/dto/change-role.dto.js";
+import { IsEmail, IsIn, MaxLength } from "class-validator";
 
-export class InviteMemberDto extends ChangeRoleDto {
+export class InviteMemberDto {
+  @IsIn(["signer", "issuer"])
+  role!: "signer" | "issuer";
+
   @Transform(({ value }: { value: unknown }) =>
     typeof value === "string" ? value.trim().toLowerCase() : value,
   )

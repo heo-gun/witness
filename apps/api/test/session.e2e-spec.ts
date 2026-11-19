@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
+import { ThrottlerGuard } from "@nestjs/throttler";
+import { SessionService } from "../src/auth/session.service.js";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
 import { SESSION_COOKIE } from "../src/auth/session.config.js";
@@ -9,6 +11,7 @@ import { configureApp } from "../src/main.js";
 import { PrismaService } from "../src/prisma/prisma.service.js";
 
 describe("Authentication sessions (e2e)", () => {
+  // Quotas are exercised separately with real Guards in rate-limit.e2e-spec.ts.
   let app: INestApplication;
   let prisma: PrismaService;
   let jwt: JwtService;
@@ -18,7 +21,10 @@ describe("Authentication sessions (e2e)", () => {
   const password = "  session-password-🔐  ";
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
@@ -60,12 +66,13 @@ describe("Authentication sessions (e2e)", () => {
     expect(header).toContain("HttpOnly");
     expect(header).toContain("SameSite=Lax");
     expect(header).toContain("Path=/api/v1");
-    expect(header).toContain("Max-Age=3600");
+    expect(header).toContain("Max-Age=900");
     sessionCookie = header.split(";")[0] ?? "";
     const token = sessionCookie.slice(`${SESSION_COOKIE}=`.length);
     const payload = await jwt.verifyAsync<Record<string, unknown>>(token);
     expect(payload.sub).toBe(userId);
-    expect(Number(payload.exp) - Number(payload.iat)).toBe(3600);
+    expect(Number(payload.exp) - Number(payload.iat)).toBe(900);
+    expect(payload.ver).toBe(0);
     expect(payload).not.toHaveProperty("email");
     expect(payload).not.toHaveProperty("passwordHash");
   });
@@ -139,11 +146,11 @@ describe("Authentication sessions (e2e)", () => {
 
   it("rejects expired, wrongly signed, wrong-issuer, wrong-audience and wrong-algorithm tokens", async () => {
     const tokens = await Promise.all([
-      jwt.signAsync({ sub: userId }, { expiresIn: -1 }),
-      jwt.signAsync({ sub: userId }, { secret: "a-different-secret-at-least-32-bytes" }),
-      jwt.signAsync({ sub: userId }, { issuer: "other-api" }),
-      jwt.signAsync({ sub: userId }, { audience: "other-app" }),
-      jwt.signAsync({ sub: userId }, { algorithm: "HS384" }),
+      jwt.signAsync({ sub: userId, ver: 0 }, { expiresIn: -1 }),
+      jwt.signAsync({ sub: userId, ver: 0 }, { secret: "a-different-secret-at-least-32-bytes" }),
+      jwt.signAsync({ sub: userId, ver: 0 }, { issuer: "other-api" }),
+      jwt.signAsync({ sub: userId, ver: 0 }, { audience: "other-app" }),
+      jwt.signAsync({ sub: userId, ver: 0 }, { algorithm: "HS384" }),
     ]);
     for (const token of tokens) {
       await request(app.getHttpServer())
@@ -159,10 +166,10 @@ describe("Authentication sessions (e2e)", () => {
       signOptions: { issuer: "tlog-api", audience: "tlog-web", algorithm: "HS256" },
     });
     const tokens = await Promise.all([
-      noExpiryJwt.signAsync({ sub: userId }),
-      jwt.signAsync({}),
-      jwt.signAsync({ sub: "invalid-user-id" }),
-      jwt.signAsync({ sub: randomUUID() }),
+      noExpiryJwt.signAsync({ sub: userId, ver: 0 }),
+      jwt.signAsync({ ver: 0 }),
+      jwt.signAsync({ sub: "invalid-user-id", ver: 0 }),
+      jwt.signAsync({ sub: randomUUID(), ver: 0 }),
     ]);
     for (const token of tokens) {
       await request(app.getHttpServer())
@@ -186,5 +193,36 @@ describe("Authentication sessions (e2e)", () => {
     expect(cookies[0]).toContain("Path=/api/v1");
     expect(cookies[0]).toContain("HttpOnly");
     await browser.get("/api/v1/auth/me").expect(401);
+    await request(app.getHttpServer())
+      .get("/api/v1/auth/me")
+      .set("Cookie", sessionCookie)
+      .expect(401);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).tokenVersion).toBe(1);
+    await browser.post("/api/v1/auth/login").send({ email, password }).expect(200);
+    await browser.get("/api/v1/auth/me").expect(200);
+  });
+
+  it.each([undefined, null, "1", -1, 1.5, 0, 2])(
+    "rejects missing, invalid and mismatched token versions (%#)",
+    async (ver) => {
+      const token = await jwt.signAsync({ sub: userId, ver });
+      await request(app.getHttpServer())
+        .get("/api/v1/auth/me")
+        .set("Cookie", `${SESSION_COOKIE}=${token}`)
+        .expect(401);
+    },
+  );
+
+  it("does not revive a login already in progress when sessions are revoked", async () => {
+    const sessions = app.get(SessionService);
+    const { tokenVersion } = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    await Promise.all([sessions.revokeAll(userId), sessions.revokeAll(userId)]);
+    const token = await sessions.issue(userId, tokenVersion);
+    await expect(sessions.authenticate(token)).rejects.toMatchObject({ status: 401 });
+    const current = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    expect(current.tokenVersion).toBe(tokenVersion + 2);
+    await expect(
+      sessions.authenticate(await sessions.issue(userId, current.tokenVersion)),
+    ).resolves.toMatchObject({ id: userId });
   });
 });

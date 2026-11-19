@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
+import { ThrottlerGuard } from "@nestjs/throttler";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
 import { SESSION_COOKIE } from "../src/auth/session.config.js";
@@ -41,7 +42,7 @@ describe("Members and invitations (e2e)", () => {
     return {
       id: user.id,
       email: user.email,
-      cookie: `${SESSION_COOKIE}=${await app.get(JwtService).signAsync({ sub: user.id })}`,
+      cookie: `${SESSION_COOKIE}=${await app.get(JwtService).signAsync({ sub: user.id, ver: user.tokenVersion })}`,
     };
   }
 
@@ -74,7 +75,10 @@ describe("Members and invitations (e2e)", () => {
   }
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
@@ -110,6 +114,7 @@ describe("Members and invitations (e2e)", () => {
     try {
       if (prisma) {
         const where = { org: { slug: { startsWith: prefix } } };
+        await prisma.auditLog.deleteMany({ where });
         await prisma.signatureRequest.deleteMany({ where });
         await prisma.document.deleteMany({ where });
         await prisma.memberKey.deleteMany({ where });
@@ -236,6 +241,93 @@ describe("Members and invitations (e2e)", () => {
       .set("Cookie", owner.cookie)
       .send({})
       .expect(409);
+  });
+
+  it("rejects owner invitations and legacy owner acceptance even with a valid token", async () => {
+    const recipient = await actor("owner-invite");
+    await request(app.getHttpServer())
+      .post(`${base}/invitations`)
+      .set("Cookie", owner.cookie)
+      .send({ email: recipient.email, role: "owner" })
+      .expect(400);
+    expect(await prisma.invitation.count({ where: { orgId, email: recipient.email } })).toBe(0);
+    const pending = await invite(recipient.email);
+    await prisma.invitation.update({ where: { id: pending.id }, data: { role: "owner" } });
+    await respond(pending.id, recipient).expect(403);
+    expect(await prisma.membership.count({ where: { orgId, userId: recipient.id } })).toBe(0);
+    await respond(pending.id, recipient, "decline").expect(200);
+  });
+
+  it("records owner promotion once and does not audit no-op or denied role changes", async () => {
+    const target = await actor("promotion");
+    await prisma.membership.create({ data: { orgId, userId: target.id, role: "issuer" } });
+    const route = `${base}/members/${target.id}`;
+    await request(app.getHttpServer())
+      .patch(route)
+      .set("Cookie", signer.cookie)
+      .send({ role: "owner" })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(route)
+      .set("Cookie", owner.cookie)
+      .send({ role: "owner" })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(route)
+      .set("Cookie", owner.cookie)
+      .send({ role: "owner" })
+      .expect(200);
+    const logs = await prisma.auditLog.findMany({ where: { orgId, targetId: target.id } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      actorId: owner.id,
+      action: "MEMBER_ROLE_CHANGED",
+      targetType: "membership",
+      metadata: { previousRole: "issuer", role: "owner" },
+    });
+    await prisma.membership.delete({ where: { userId_orgId: { userId: target.id, orgId } } });
+  });
+
+  it("rolls back the audit record when the role update fails", async () => {
+    const target = await actor("audit-rollback");
+    await prisma.membership.create({ data: { orgId, userId: target.id, role: "issuer" } });
+    // The real transaction writes the audit entry before this injected update failure.
+    const failure = jest.spyOn(prisma, "$transaction").mockImplementationOnce(async (operation) => {
+      failure.mockRestore();
+      if (typeof operation !== "function") throw new Error("Expected interactive transaction");
+      return prisma.$transaction(async (tx) => {
+        const update = jest
+          .spyOn(tx.membership, "update")
+          .mockRejectedValueOnce(new Error("injected update failure"));
+        try {
+          return await operation(tx);
+        } finally {
+          update.mockRestore();
+        }
+      });
+    });
+    await expect(
+      app.get(MembersService).changeRole(orgId, owner.id, target.id, "owner"),
+    ).rejects.toThrow("injected update failure");
+    expect(await prisma.auditLog.count({ where: { orgId, targetId: target.id } })).toBe(0);
+    expect(
+      await prisma.membership.findUnique({ where: { userId_orgId: { userId: target.id, orgId } } }),
+    ).toMatchObject({ role: "issuer" });
+  });
+
+  it("rejects another organization's user id without modifying membership or audit logs", async () => {
+    for (const method of ["patch", "delete"] as const) {
+      await request(app.getHttpServer())
+        [method](`${base}/members/${outsider.id}`)
+        .set("Cookie", owner.cookie)
+        .send(method === "patch" ? { role: "owner" } : {})
+        .expect(404);
+    }
+    expect(await prisma.membership.count({ where: { orgId, userId: outsider.id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { orgId, targetId: outsider.id } })).toBe(0);
+    expect(await prisma.membership.findFirst({ where: { userId: outsider.id } })).toMatchObject({
+      role: "owner",
+    });
   });
 
   it("allows removing a member and immediately denies their subsequent reads", async () => {
@@ -438,7 +530,7 @@ describe("Members and invitations (e2e)", () => {
     await request(app.getHttpServer())
       .post(`${base}/invitations`)
       .set("Cookie", owner.cookie)
-      .send({ email: ` ${prefix.toUpperCase()}-DUPLICATE@EXAMPLE.COM `, role: "owner" })
+      .send({ email: ` ${prefix.toUpperCase()}-DUPLICATE@EXAMPLE.COM `, role: "issuer" })
       .expect(409);
   });
 
@@ -474,14 +566,14 @@ describe("Members and invitations (e2e)", () => {
 
   it("accepts the invited role atomically and prevents replay", async () => {
     const recipient = await actor("accept");
-    const pending = await invite(recipient.email, "owner");
+    const pending = await invite(recipient.email, "signer");
     const res = await respond(pending.id, recipient).expect(200);
-    expect(res.body).toMatchObject({ status: "accepted", role: "owner" });
+    expect(res.body).toMatchObject({ status: "accepted", role: "signer" });
     expect(
       await prisma.membership.findUnique({
         where: { userId_orgId: { userId: recipient.id, orgId } },
       }),
-    ).toMatchObject({ role: "owner" });
+    ).toMatchObject({ role: "signer" });
     expect(await prisma.invitation.findUnique({ where: { id: pending.id } })).toMatchObject({
       status: "accepted",
       respondedAt: expect.any(Date),
@@ -504,7 +596,7 @@ describe("Members and invitations (e2e)", () => {
 
   it("does not overwrite membership when accepting an obsolete invitation", async () => {
     const recipient = await actor("existing");
-    const pending = await invite(recipient.email, "owner");
+    const pending = await invite(recipient.email, "signer");
     await prisma.membership.create({ data: { userId: recipient.id, orgId, role: "issuer" } });
     await respond(pending.id, recipient).expect(409);
     expect(await prisma.invitation.findUnique({ where: { id: pending.id } })).toMatchObject({

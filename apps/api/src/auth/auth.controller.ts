@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Header, HttpCode, Post, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { AuthService } from "./auth.service.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- ValidationPipe requires the runtime DTO class.
@@ -23,16 +24,21 @@ export class AuthController {
   ) {}
 
   @Post("register")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() input: RegisterDto) {
     return this.auth.register(input);
   }
 
   @Post("login")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Header("Cache-Control", "no-store")
   async login(@Body() input: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const user = await this.auth.login(input);
-    const token = await this.sessions.issue(user.id);
+    const { user, tokenVersion } = await this.auth.login(input);
+    // Keep the version read before password verification so concurrent logout cannot revive it.
+    const token = await this.sessions.issue(user.id, tokenVersion);
     res.cookie(SESSION_COOKIE, token, {
       ...sessionCookieOptions(),
       maxAge: SESSION_SECONDS * 1000,
@@ -44,7 +50,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
   @Header("Cache-Control", "no-store")
-  logout(@Res({ passthrough: true }) res: Response): void {
+  async logout(
+    @CurrentUser() user: SessionUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.sessions.revokeAll(user.id);
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
   }
 

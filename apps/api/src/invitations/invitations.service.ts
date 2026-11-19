@@ -116,6 +116,8 @@ export class InvitationsService {
         if (!timingSafeEqual(Buffer.from(current.tokenHash, "hex"), suppliedHash))
           throw new ForbiddenException("Invalid invitation token");
         if (status === "accepted") {
+          if (current.role === "owner")
+            throw new ForbiddenException("Owner role cannot be granted by invitation");
           const existing = await tx.membership.findUnique({
             where: { userId_orgId: { userId: user.id, orgId: current.orgId } },
           });

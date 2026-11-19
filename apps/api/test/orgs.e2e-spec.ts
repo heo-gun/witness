@@ -44,7 +44,10 @@ describe("Organizations and roles (e2e)", () => {
         },
       });
       userIds.push(user.id);
-      return { id: user.id, cookie: `${SESSION_COOKIE}=${await jwt.signAsync({ sub: user.id })}` };
+      return {
+        id: user.id,
+        cookie: `${SESSION_COOKIE}=${await jwt.signAsync({ sub: user.id, ver: user.tokenVersion })}`,
+      };
     };
     owner = await makeActor("owner");
     signer = await makeActor("signer");
@@ -80,6 +83,7 @@ describe("Organizations and roles (e2e)", () => {
   afterAll(async () => {
     try {
       if (prisma) {
+        await prisma.auditLog.deleteMany({ where: { org: { slug: { startsWith: prefix } } } });
         await prisma.membership.deleteMany({ where: { org: { slug: { startsWith: prefix } } } });
         await prisma.organization.deleteMany({ where: { slug: { startsWith: prefix } } });
         await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -123,7 +127,9 @@ describe("Organizations and roles (e2e)", () => {
       },
     });
     userIds.push(emptyUser.id);
-    const token = await app.get(JwtService).signAsync({ sub: emptyUser.id });
+    const token = await app
+      .get(JwtService)
+      .signAsync({ sub: emptyUser.id, ver: emptyUser.tokenVersion });
     const empty = await request(app.getHttpServer())
       .get("/api/v1/orgs")
       .set("Cookie", `${SESSION_COOKIE}=${token}`)

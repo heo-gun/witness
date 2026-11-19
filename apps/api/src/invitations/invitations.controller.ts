@@ -9,6 +9,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
+import { ThrottlerGuard } from "@nestjs/throttler";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JsonRequestGuard } from "../auth/json-request.guard.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
@@ -53,6 +54,7 @@ export class InvitationsController {
   }
 
   @Post("invitations/:id/accept")
+  @UseGuards(ThrottlerGuard)
   @Header("Cache-Control", "no-store")
   @HttpCode(200)
   acceptInvitation(
@@ -64,6 +66,7 @@ export class InvitationsController {
   }
 
   @Post("invitations/:id/decline")
+  @UseGuards(ThrottlerGuard)
   @Header("Cache-Control", "no-store")
   @HttpCode(200)
   declineInvitation(

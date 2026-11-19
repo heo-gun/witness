@@ -19,7 +19,7 @@ export const invitationKeys = {
 
 export function inviteMember(
   slug: string,
-  input: { email: string; role: Role },
+  input: { email: string; role: "signer" | "issuer" },
 ): Promise<Invitation & { invitationPath: string }> {
   return apiRequest(`/orgs/${encodeURIComponent(slug)}/invitations`, {
     method: "POST",

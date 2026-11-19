@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { ThrottlerGuard } from "@nestjs/throttler";
 import request from "supertest";
 import { AppModule } from "../src/app.module.js";
 import { PasswordService } from "../src/auth/password.service.js";
@@ -16,7 +17,10 @@ describe("Registration (e2e)", () => {
   const password = "  registration-password-🔐  ";
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
