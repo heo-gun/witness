@@ -14,6 +14,14 @@ import { SESSION_COOKIE, SESSION_SECONDS, sessionCookieOptions } from "./session
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { SessionService } from "./session.service.js";
 import type { SessionUser } from "./session.service.js";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata.
+import { EmailTokenService } from "./email-token.service.js";
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports -- ValidationPipe requires runtime classes.
+import {
+  RequestEmailTokenDto,
+  ConsumeEmailTokenDto,
+  ChangePasswordDto,
+} from "./dto/email-token.dto.js";
 
 @Controller("auth")
 @UseGuards(JsonRequestGuard)
@@ -21,6 +29,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
+    private readonly emailTokens: EmailTokenService,
   ) {}
 
   @Post("register")
@@ -28,6 +37,43 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() input: RegisterDto) {
     return this.auth.register(input);
+  }
+
+  @Post("email/request")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @HttpCode(202)
+  @Header("Cache-Control", "no-store")
+  async requestEmail(@Body() input: RequestEmailTokenDto) {
+    await this.emailTokens.request(input.email, input.purpose);
+    return { accepted: true };
+  }
+
+  @Post("email/confirm")
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(204)
+  @Header("Cache-Control", "no-store")
+  async confirmEmail(
+    @Body() input: ConsumeEmailTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.emailTokens.consume(input);
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+  }
+
+  @Post("password")
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(204)
+  @Header("Cache-Control", "no-store")
+  async changePassword(
+    @CurrentUser() user: SessionUser,
+    @Body() input: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.emailTokens.changePassword(user.id, input);
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
   }
 
   @Post("login")

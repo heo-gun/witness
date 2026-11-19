@@ -25,6 +25,7 @@ describe("Rate limits (real Guards and storage)", () => {
         email: `ratetest-${randomUUID()}@example.com`,
         name: "Rate test",
         passwordHash: "unused",
+        emailVerifiedAt: new Date(),
       },
     });
     userId = user.id;
@@ -42,6 +43,9 @@ describe("Rate limits (real Guards and storage)", () => {
   it.each([
     ["auth/login", 10],
     ["auth/register", 5],
+    ["auth/email/request", 3],
+    ["auth/email/confirm", 10],
+    ["auth/password", 5],
     ["invitations/invalid/accept", 20],
     ["invitations/invalid/decline", 20],
   ] as const)(

@@ -1,3 +1,4 @@
+import { MailService } from "../src/auth/mail.service.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -36,6 +37,7 @@ describe("Members and invitations (e2e)", () => {
         email: `${prefix}-${label}@example.com`,
         name: label,
         passwordHash: "unused-fixture-hash",
+        emailVerifiedAt: new Date(),
       },
     });
     userIds.push(user.id);
@@ -76,6 +78,8 @@ describe("Members and invitations (e2e)", () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(MailService)
+      .useValue({ send: async () => {} })
       .overrideGuard(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
@@ -364,7 +368,12 @@ describe("Members and invitations (e2e)", () => {
       .post(`/api/v1/invitations/${pending.id}/accept`)
       .set("Cookie", attacker.cookie)
       .send({})
-      .expect(400);
+      .expect(403);
+    await respond(pending.id, attacker).expect(403);
+    await request(app.getHttpServer())
+      .get("/api/v1/me/invitations")
+      .set("Cookie", attacker.cookie)
+      .expect(403);
     expect(await prisma.membership.count({ where: { orgId, userId: attacker.id } })).toBe(0);
   });
 

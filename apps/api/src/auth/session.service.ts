@@ -10,6 +10,7 @@ export interface SessionUser {
   email: string;
   name: string;
   createdAt: Date;
+  emailVerifiedAt: Date | null;
 }
 
 @Injectable()
@@ -50,10 +51,23 @@ export class SessionService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, name: true, createdAt: true, tokenVersion: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        createdAt: true,
+        tokenVersion: true,
+        emailVerifiedAt: true,
+      },
     });
     if (!user || user.tokenVersion !== payload.ver)
       throw new UnauthorizedException("Invalid session");
-    return { id: user.id, email: user.email, name: user.name, createdAt: user.createdAt };
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      createdAt: user.createdAt,
+      emailVerifiedAt: user.emailVerifiedAt,
+    };
   }
 }

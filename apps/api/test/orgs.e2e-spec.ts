@@ -41,6 +41,7 @@ describe("Organizations and roles (e2e)", () => {
           email: `${prefix}-${label}@example.com`,
           name: label,
           passwordHash: "unused-fixture-hash",
+          emailVerifiedAt: new Date(),
         },
       });
       userIds.push(user.id);
@@ -124,6 +125,7 @@ describe("Organizations and roles (e2e)", () => {
         email: `${prefix}-empty@example.com`,
         name: "empty",
         passwordHash: "unused-fixture-hash",
+        emailVerifiedAt: new Date(),
       },
     });
     userIds.push(emptyUser.id);

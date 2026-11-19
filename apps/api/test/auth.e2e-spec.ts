@@ -1,3 +1,4 @@
+import { MailService } from "../src/auth/mail.service.js";
 import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -18,6 +19,8 @@ describe("Registration (e2e)", () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(MailService)
+      .useValue({ send: async () => {} })
       .overrideGuard(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
@@ -48,6 +51,7 @@ describe("Registration (e2e)", () => {
       email,
       name: "가입자",
       createdAt: expect.any(String),
+      emailVerifiedAt: null,
     });
     expect(res.headers["set-cookie"]).toBeUndefined();
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });

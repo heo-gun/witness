@@ -13,6 +13,7 @@ import { ThrottlerGuard } from "@nestjs/throttler";
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JsonRequestGuard } from "../auth/json-request.guard.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
+import { VerifiedEmailGuard } from "../auth/verified-email.guard.js";
 import type { SessionUser } from "../auth/session.service.js";
 import { CurrentOrg } from "../orgs/current-org.decorator.js";
 import type { OrganizationContext } from "../orgs/current-org.decorator.js";
@@ -30,7 +31,7 @@ import { InviteMemberDto } from "./dto/invite-member.dto.js";
 import { InvitationsService } from "./invitations.service.js";
 
 @Controller()
-@UseGuards(JwtAuthGuard, JsonRequestGuard)
+@UseGuards(JwtAuthGuard, JsonRequestGuard, VerifiedEmailGuard)
 export class InvitationsController {
   constructor(private readonly invitations: InvitationsService) {}
 

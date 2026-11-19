@@ -2,6 +2,7 @@ import { Body, Controller, Get, Header, Param, Patch, Post, UseGuards } from "@n
 import { CurrentUser } from "../auth/current-user.decorator.js";
 import { JsonRequestGuard } from "../auth/json-request.guard.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
+import { VerifiedEmailGuard } from "../auth/verified-email.guard.js";
 import type { SessionUser } from "../auth/session.service.js";
 import { CurrentOrg } from "./current-org.decorator.js";
 import type { OrganizationContext } from "./current-org.decorator.js";
@@ -17,7 +18,7 @@ import { Roles } from "./roles.decorator.js";
 import { RolesGuard } from "./roles.guard.js";
 
 @Controller("orgs")
-@UseGuards(JwtAuthGuard, JsonRequestGuard)
+@UseGuards(JwtAuthGuard, JsonRequestGuard, VerifiedEmailGuard)
 export class OrgsController {
   constructor(private readonly orgs: OrgsService) {}
 

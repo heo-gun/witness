@@ -3,6 +3,7 @@ import type { Prisma, Role } from "../generated/prisma/client.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
 import { withOwnerTransaction } from "./organization-lock.js";
+import { requireVerifiedEmail } from "../auth/verified-email.guard.js";
 
 const MEMBER_SELECT = {
   userId: true,
@@ -35,6 +36,7 @@ export class MembersService {
   changeRole(orgId: string, actorId: string, userId: string, role: Role) {
     return this.asOwner(orgId, actorId, async (tx) => {
       const member = await this.getMember(tx, orgId, userId);
+      await requireVerifiedEmail(tx, userId);
       if (member.role !== role) {
         await this.ensureMutable(tx, orgId, userId, member.role);
         await tx.auditLog.create({

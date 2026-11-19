@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { SessionUser } from "../auth/session.service.js";
+import { requireVerifiedEmail } from "../auth/verified-email.guard.js";
 import { Prisma } from "../generated/prisma/client.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { MembersService } from "../members/members.service.js";
@@ -106,6 +107,7 @@ export class InvitationsService {
     return this.prisma.$transaction(
       async (tx) => {
         await lockOrganization(tx, invitation.orgId);
+        await requireVerifiedEmail(tx, user.id);
         const current = await tx.invitation.findUnique({ where: { id } });
         if (!current) throw new NotFoundException("Invitation not found");
         if (current.status !== "pending")

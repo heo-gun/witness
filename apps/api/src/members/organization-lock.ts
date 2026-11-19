@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
+import { requireVerifiedEmail } from "../auth/verified-email.guard.js";
 
 export async function lockOrganization(tx: Prisma.TransactionClient, orgId: string): Promise<void> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
@@ -18,6 +19,7 @@ export function withOwnerTransaction<T>(
   return prisma.$transaction(
     async (tx) => {
       await lockOrganization(tx, orgId);
+      await requireVerifiedEmail(tx, actorId);
       const actor = await tx.membership.findUnique({
         where: { userId_orgId: { userId: actorId, orgId } },
       });

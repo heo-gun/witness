@@ -28,6 +28,7 @@ export class RolesGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<OrganizationRequest>();
     if (!req.user) throw new UnauthorizedException();
+    if (!req.user.emailVerifiedAt) throw new ForbiddenException("Email verification required");
     const params = plainToInstance(OrgSlugDto, { slug: req.params.slug });
     if (validateSync(params).length > 0) throw new BadRequestException("Invalid organization slug");
 

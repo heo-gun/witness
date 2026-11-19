@@ -1,3 +1,4 @@
+import { MailService } from "../src/auth/mail.service.js";
 import { randomUUID } from "node:crypto";
 import type { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -22,6 +23,8 @@ describe("Authentication sessions (e2e)", () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(MailService)
+      .useValue({ send: async () => {} })
       .overrideGuard(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
@@ -56,6 +59,7 @@ describe("Authentication sessions (e2e)", () => {
       email,
       name: "세션 사용자",
       createdAt: expect.any(String),
+      emailVerifiedAt: null,
     });
     expect(res.headers["cache-control"]).toBe("no-store");
     const cookies: unknown = res.headers["set-cookie"];
@@ -87,6 +91,7 @@ describe("Authentication sessions (e2e)", () => {
       email,
       name: "세션 사용자",
       createdAt: expect.any(String),
+      emailVerifiedAt: null,
     });
     expect(res.headers["cache-control"]).toBe("no-store");
   });

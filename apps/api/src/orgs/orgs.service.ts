@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client.js";
 import { withOwnerTransaction } from "../members/organization-lock.js";
+import { requireVerifiedEmail } from "../auth/verified-email.guard.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { CreateOrgDto } from "./dto/create-org.dto.js";
@@ -26,14 +27,17 @@ export class OrgsService {
 
   async createOrg(userId: string, input: CreateOrgDto) {
     try {
-      return await this.prisma.organization.create({
-        data: {
-          name: input.name,
-          slug: input.slug,
-          description: input.description ?? "",
-          memberships: { create: { userId, role: "owner" } },
-        },
-        select: ORGANIZATION_SELECT,
+      return await this.prisma.$transaction(async (tx) => {
+        await requireVerifiedEmail(tx, userId);
+        return tx.organization.create({
+          data: {
+            name: input.name,
+            slug: input.slug,
+            description: input.description ?? "",
+            memberships: { create: { userId, role: "owner" } },
+          },
+          select: ORGANIZATION_SELECT,
+        });
       });
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

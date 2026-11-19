@@ -8,11 +8,23 @@ import { JwtAuthGuard } from "./jwt-auth.guard.js";
 import { JsonRequestGuard } from "./json-request.guard.js";
 import { getJwtOptions } from "./session.config.js";
 import { SessionService } from "./session.service.js";
+import { EmailTokenService } from "./email-token.service.js";
+import { MailService } from "./mail.service.js";
+import { VerifiedEmailGuard } from "./verified-email.guard.js";
 
 @Module({
   imports: [PrismaModule, JwtModule.registerAsync({ useFactory: getJwtOptions })],
   controllers: [AuthController],
-  providers: [PasswordService, AuthService, SessionService, JwtAuthGuard, JsonRequestGuard],
-  exports: [PasswordService, SessionService, JwtAuthGuard, JsonRequestGuard],
+  providers: [
+    PasswordService,
+    AuthService,
+    SessionService,
+    JwtAuthGuard,
+    JsonRequestGuard,
+    EmailTokenService,
+    MailService,
+    VerifiedEmailGuard,
+  ],
+  exports: [PasswordService, SessionService, JwtAuthGuard, JsonRequestGuard, VerifiedEmailGuard],
 })
 export class AuthModule {}
