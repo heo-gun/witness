@@ -4,6 +4,7 @@ import { Prisma } from "../generated/prisma/client.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { RegisterDto } from "./dto/register.dto.js";
 import type { LoginDto } from "./dto/login.dto.js";
+import { publicSessionUser } from "./session.service.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PasswordService } from "./password.service.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata.
@@ -26,13 +27,7 @@ export class AuthService {
     const valid = await this.passwords.verify(passwordHash, input.password);
     if (!user || !valid) throw new UnauthorizedException("Invalid email or password");
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        createdAt: user.createdAt,
-        emailVerifiedAt: user.emailVerifiedAt,
-      },
+      user: publicSessionUser(user),
       tokenVersion: user.tokenVersion,
     };
   }

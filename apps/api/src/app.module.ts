@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module.js";
 import { InvitationsModule } from "./invitations/invitations.module.js";
+import { KeysModule } from "./keys/keys.module.js";
 import { LogModule } from "./log/log.module.js";
 import { MembersModule } from "./members/members.module.js";
 import { OrgsModule } from "./orgs/orgs.module.js";
@@ -17,6 +18,7 @@ import { PrismaModule } from "./prisma/prisma.module.js";
     MembersModule,
     InvitationsModule,
     LogModule,
+    KeysModule,
   ],
 })
 export class AppModule {}

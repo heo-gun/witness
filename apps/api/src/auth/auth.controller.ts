@@ -12,7 +12,7 @@ import { JsonRequestGuard } from "./json-request.guard.js";
 import { JwtAuthGuard } from "./jwt-auth.guard.js";
 import { SESSION_COOKIE, SESSION_SECONDS, sessionCookieOptions } from "./session.config.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
-import { SessionService } from "./session.service.js";
+import { publicSessionUser, SessionService } from "./session.service.js";
 import type { SessionUser } from "./session.service.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest DI metadata.
 import { EmailTokenService } from "./email-token.service.js";
@@ -111,6 +111,6 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Header("Cache-Control", "no-store")
   me(@CurrentUser() user: SessionUser): SessionUser {
-    return user;
+    return publicSessionUser(user);
   }
 }

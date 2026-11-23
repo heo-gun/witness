@@ -13,6 +13,20 @@ export interface SessionUser {
   emailVerifiedAt: Date | null;
 }
 
+export interface AuthenticatedUser extends SessionUser {
+  tokenVersion: number;
+}
+
+export function publicSessionUser({
+  id,
+  email,
+  name,
+  createdAt,
+  emailVerifiedAt,
+}: SessionUser): SessionUser {
+  return { id, email, name, createdAt, emailVerifiedAt };
+}
+
 @Injectable()
 export class SessionService {
   constructor(
@@ -31,7 +45,7 @@ export class SessionService {
     });
   }
 
-  async authenticate(token: string): Promise<SessionUser> {
+  async authenticate(token: string): Promise<AuthenticatedUser> {
     let payload: Record<string, unknown>;
     try {
       payload = await this.jwt.verifyAsync<Record<string, unknown>>(token);
@@ -62,12 +76,6 @@ export class SessionService {
     });
     if (!user || user.tokenVersion !== payload.ver)
       throw new UnauthorizedException("Invalid session");
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      createdAt: user.createdAt,
-      emailVerifiedAt: user.emailVerifiedAt,
-    };
+    return user;
   }
 }
