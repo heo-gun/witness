@@ -49,8 +49,13 @@ describe("Email verification and recovery", () => {
     await post("email/request").send({ email, purpose }).expect(202);
     return latest(email);
   }
-  const consume = (mail: { token: string; purpose: EmailTokenPurpose }) =>
-    post("email/confirm").send({ token: mail.token, purpose: mail.purpose, password: replacement });
+  const consume = (mail: { token: string; purpose: EmailTokenPurpose }, name?: string) =>
+    post("email/confirm").send({
+      token: mail.token,
+      purpose: mail.purpose,
+      password: replacement,
+      name,
+    });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -130,7 +135,8 @@ describe("Email verification and recovery", () => {
     });
     expect(stored.tokenHash).toBe(createHash("sha256").update(mail.token).digest("hex"));
     expect(stored.expiresAt.getTime() - Date.now()).toBeGreaterThan(14 * 60_000);
-    await consume(mail).expect(204);
+    await consume(mail).expect(422);
+    await consume(mail, "  Mail owner  ").expect(204);
     expect(await prisma.emailToken.count({ where: { userId: user.id } })).toBe(0);
     await consume(mail).expect(400);
     await request(app.getHttpServer())
@@ -142,6 +148,7 @@ describe("Email verification and recovery", () => {
       .send({ email: user.email, password: replacement })
       .expect(200);
     expect(login.body.emailVerifiedAt).toEqual(expect.any(String));
+    expect(login.body.name).toBe("Mail owner");
     const cookie = login.get("Set-Cookie")?.[0] ?? "";
     await request(app.getHttpServer())
       .get("/api/v1/me/invitations")
@@ -195,9 +202,29 @@ describe("Email verification and recovery", () => {
   it("allows exactly one simultaneous consumption", async () => {
     const user = await account();
     const mail = await issue(user.email);
-    const responses = await Promise.all([consume(mail), consume(mail)]);
+    const responses = await Promise.all([consume(mail, "First"), consume(mail, "Second")]);
     expect(responses.map((r) => r.status).sort()).toEqual([204, 400]);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).tokenVersion).toBe(1);
+  });
+
+  it("keeps an unverified password-reset token usable until the owner supplies a valid new name", async () => {
+    const user = await account();
+    const mail = await issue(user.email, "reset_password");
+    await consume(mail).expect(422);
+    await consume(mail, "   ").expect(400);
+    await consume(mail, "x".repeat(51)).expect(400);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+      name: user.name,
+      passwordHash: user.passwordHash,
+      emailVerifiedAt: null,
+      tokenVersion: user.tokenVersion,
+    });
+    await consume(mail, "Mailbox owner").expect(204);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({
+      name: "Mailbox owner",
+      emailVerifiedAt: expect.any(Date),
+      tokenVersion: user.tokenVersion + 1,
+    });
   });
 
   it("resets verified accounts, but requires manual recovery when live keys exist", async () => {
@@ -219,11 +246,18 @@ describe("Email verification and recovery", () => {
     });
     await consume(mail).expect(409);
     await prisma.memberKey.delete({ where: { id: key.id } });
-    await consume(mail).expect(204);
+    await consume(mail, "Unrequested rename").expect(204);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).name).toBe(user.name);
     await request(app.getHttpServer())
       .get("/api/v1/auth/me")
       .set("Cookie", user.cookie)
       .expect(401);
+  });
+
+  it("resets a verified password without requiring a new name", async () => {
+    const user = await account(true);
+    await consume(await issue(user.email, "reset_password")).expect(204);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).name).toBe(user.name);
   });
 
   it("requires a verified target when changing a role", async () => {

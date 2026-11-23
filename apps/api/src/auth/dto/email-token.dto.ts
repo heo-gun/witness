@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsEmail, IsIn, IsString, Length, Matches, MaxLength } from "class-validator";
+import { IsEmail, IsIn, IsString, Length, Matches, MaxLength, ValidateIf } from "class-validator";
 import type { EmailTokenPurpose } from "../../generated/prisma/client.js";
 
 export class RequestEmailTokenDto {
@@ -20,6 +20,12 @@ export class ConsumeEmailTokenDto {
 
   @IsIn(["verify_email", "reset_password"])
   purpose!: EmailTokenPurpose;
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @Length(1, 50)
+  name?: string;
 
   @IsString()
   @Length(8, 128)

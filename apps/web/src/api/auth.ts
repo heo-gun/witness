@@ -27,8 +27,12 @@ export function confirmEmail(
   token: string,
   purpose: EmailPurpose,
   password: string,
+  name?: string,
 ): Promise<void> {
-  return apiRequest("/auth/email/confirm", { method: "POST", body: { token, purpose, password } });
+  return apiRequest("/auth/email/confirm", {
+    method: "POST",
+    body: { token, purpose, password, name },
+  });
 }
 export function changePassword(currentPassword: string, password: string): Promise<void> {
   return apiRequest("/auth/password", { method: "POST", body: { currentPassword, password } });

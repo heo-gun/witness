@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client.js";
 import type { EmailTokenPurpose } from "../generated/prisma/client.js";
@@ -129,9 +130,13 @@ export class EmailTokenService {
         ) {
           throw new ConflictException("Existing memberships or keys require manual recovery");
         }
+        if (!user.emailVerifiedAt && !input.name) {
+          throw new UnprocessableEntityException("A name is required to verify this account");
+        }
         await tx.user.update({
           where: { id: user.id },
           data: {
+            name: user.emailVerifiedAt ? undefined : input.name,
             passwordHash,
             emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
             tokenVersion: { increment: 1 },
