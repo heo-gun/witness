@@ -18,7 +18,8 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
   const handleError = useWorkspaceError(userId, slug);
   const mutation = useMutation({
     gcTime: 0,
-    mutationFn: (input: { email: string; role: "signer" | "issuer" }) => inviteMember(slug, input),
+    mutationFn: (input: { email: string; role: "signer" | "issuer" }) =>
+      inviteMember(slug, input, userId),
     onSuccess: () => {
       formRef.current?.reset();
       toast.success(ko.workspace.invited);
@@ -29,7 +30,7 @@ export function InviteMemberForm({ userId, slug }: { userId: string; slug: strin
     },
   });
   const cancellation = useMutation({
-    mutationFn: (id: string) => cancelInvitation(slug, id),
+    mutationFn: (id: string) => cancelInvitation(slug, id, userId),
     onSuccess: () => mutation.reset(),
     onError: handleError,
   });

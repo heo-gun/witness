@@ -67,11 +67,13 @@ export const ko = {
     alreadySignedIn: "이미 로그인되어 있습니다.",
     continueDashboard: "내 기관으로 이동",
     invalidCredentials: "이메일 또는 비밀번호를 확인해 주세요.",
-    duplicateEmail: "이미 가입된 이메일입니다. 로그인해 주세요.",
     invalidInput: "입력한 정보의 형식과 길이를 확인해 주세요.",
     invalidName: "이름은 공백을 제외하고 1–50자로 입력해 주세요.",
     passwordMismatch: "비밀번호가 일치하지 않습니다.",
     sessionError: "로그인 상태를 확인하지 못했습니다.",
+    accountChanged: "로그인한 계정이 바뀌어 요청을 취소했습니다.",
+    resumeSession:
+      "세션이 만료되었습니다. 같은 계정으로 로그인하면 작성하던 내용을 이어갈 수 있습니다.",
     unavailable: "요청을 보낼 수 없습니다. 페이지를 새로 열어 주세요.",
   },
   dashboard: {

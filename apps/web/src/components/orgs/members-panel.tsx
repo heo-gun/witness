@@ -36,8 +36,8 @@ export function MembersPanel({
   const mutation = useMutation({
     mutationFn: async (action: MemberAction): Promise<Member | void> =>
       action.type === "role"
-        ? changeRole(slug, action.userId, action.role)
-        : removeMember(slug, action.userId),
+        ? changeRole(slug, action.userId, action.role, userId)
+        : removeMember(slug, action.userId, userId),
     onSuccess: async (result, action) => {
       queryClient.setQueryData<Member[]>(memberKeys.list(userId, slug), (previous) =>
         previous?.flatMap((member) =>

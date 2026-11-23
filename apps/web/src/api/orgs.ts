@@ -21,21 +21,30 @@ export const orgKeys = {
   detail: (userId: string, slug: string) => ["orgs", "detail", userId, slug] as const,
 };
 
-export function listOrgs(signal?: AbortSignal): Promise<Organization[]> {
-  return apiRequest("/orgs", { signal });
+export function listOrgs(expectedUserId: string, signal?: AbortSignal): Promise<Organization[]> {
+  return apiRequest("/orgs", { expectedUserId, signal });
 }
 
-export function createOrg(input: CreateOrgInput): Promise<Organization> {
-  return apiRequest("/orgs", { method: "POST", body: input });
+export function createOrg(input: CreateOrgInput, expectedUserId: string): Promise<Organization> {
+  return apiRequest("/orgs", { method: "POST", body: input, expectedUserId });
 }
 
-export function getOrg(slug: string, signal?: AbortSignal): Promise<Organization> {
-  return apiRequest(`/orgs/${encodeURIComponent(slug)}`, { signal });
+export function getOrg(
+  slug: string,
+  expectedUserId: string,
+  signal?: AbortSignal,
+): Promise<Organization> {
+  return apiRequest(`/orgs/${encodeURIComponent(slug)}`, { expectedUserId, signal });
 }
 
 export function updateOrg(
   slug: string,
   input: Pick<Organization, "name" | "description">,
+  expectedUserId: string,
 ): Promise<Organization> {
-  return apiRequest(`/orgs/${encodeURIComponent(slug)}`, { method: "PATCH", body: input });
+  return apiRequest(`/orgs/${encodeURIComponent(slug)}`, {
+    method: "PATCH",
+    body: input,
+    expectedUserId,
+  });
 }

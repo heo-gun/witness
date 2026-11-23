@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError } from "@/api/client";
+import { accessDenied, ApiError } from "@/api/client";
 import { listMembers, memberKeys } from "@/api/members";
 import { getOrg, orgKeys } from "@/api/orgs";
-import { useSession } from "@/lib/auth";
+import { useProtectedUserId } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
-import { useWorkspaceSessionExpiry, workspaceErrorMessage, workspaceRetry } from "@/lib/workspace";
+import { workspaceErrorMessage, workspaceRetry } from "@/lib/workspace";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InviteMemberForm } from "./invite-member-form";
@@ -15,22 +15,20 @@ import { MembersPanel } from "./members-panel";
 import { OrgSettingsForm } from "./org-settings-form";
 
 export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "settings" }) {
-  const session = useSession();
-  const userId = session.data?.id ?? "";
+  const userId = useProtectedUserId();
   const organization = useQuery({
     queryKey: orgKeys.detail(userId, slug),
-    queryFn: ({ signal }) => getOrg(slug, signal),
+    queryFn: ({ signal }) => getOrg(slug, userId, signal),
     enabled: !!userId,
     retry: workspaceRetry,
   });
   const members = useQuery({
     queryKey: memberKeys.list(userId, slug),
-    queryFn: ({ signal }) => listMembers(slug, signal),
+    queryFn: ({ signal }) => listMembers(slug, userId, signal),
     enabled: !!userId,
     retry: workspaceRetry,
   });
   const error = organization.error ?? members.error;
-  useWorkspaceSessionExpiry(userId, error);
   const canManage = members.data?.find((member) => member.userId === userId)?.role === "owner";
   const href = `/orgs/${encodeURIComponent(slug)}`;
 
@@ -42,7 +40,7 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
       >
         {ko.workspace.back}
       </Link>
-      {error ? (
+      {error && (
         <Card role="alert" className="mt-8">
           <h1 className="text-xl font-semibold">{ko.workspace.loadError}</h1>
           <p className="mt-3 text-sm leading-6 text-destructive">{workspaceErrorMessage(error)}</p>
@@ -58,16 +56,22 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
             {ko.common.retry}
           </Button>
         </Card>
-      ) : !organization.data || !members.data ? (
-        <Card role="status" className="mt-8">
-          {ko.common.loading}
-        </Card>
-      ) : !members.data.some((member) => member.userId === userId) ? (
+      )}
+      {!organization.data || !members.data ? (
+        !error && (
+          <Card role="status" className="mt-8">
+            {ko.common.loading}
+          </Card>
+        )
+      ) : accessDenied(organization.error) ||
+        accessDenied(members.error) ? null : !members.data.some(
+          (member) => member.userId === userId,
+        ) ? (
         <Card role="alert" className="mt-8">
           {workspaceErrorMessage(new ApiError(403))}
         </Card>
       ) : (
-        <>
+        <div hidden={!!error} inert={!!error}>
           <div className="mt-8 mb-8 min-w-0">
             <p className="mb-3 font-mono text-xs tracking-[0.2em] text-muted-foreground">
               {ko.workspace.eyebrow}
@@ -135,7 +139,7 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </main>
   );

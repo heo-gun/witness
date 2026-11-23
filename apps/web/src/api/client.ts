@@ -5,12 +5,17 @@ export class ApiError extends Error {
   }
 }
 
+export function accessDenied(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 403 || error.status === 404);
+}
+
 export async function apiRequest<T>(
   path: string,
   options: {
     method?: "GET" | "POST" | "PATCH" | "DELETE";
     body?: unknown;
     signal?: AbortSignal;
+    expectedUserId?: string;
   } = {},
 ): Promise<T> {
   const timeout = AbortSignal.timeout(15_000);
@@ -18,7 +23,10 @@ export async function apiRequest<T>(
     method: options.method ?? "GET",
     credentials: "same-origin",
     cache: "no-store",
-    headers: options.body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: {
+      ...(options.body !== undefined && { "Content-Type": "application/json" }),
+      ...(options.expectedUserId !== undefined && { "X-Expected-User-Id": options.expectedUserId }),
+    },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
   });

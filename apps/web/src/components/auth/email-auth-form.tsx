@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { changePassword, confirmEmail, requestEmail } from "@/api/auth";
 import { ApiError } from "@/api/client";
-import { authErrorMessage, updateSession } from "@/lib/auth";
+import { authErrorMessage, ProtectedUserId, updateSession } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,7 @@ export function EmailAuthForm({
   initialNameRequired?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const expectedUserId = useContext(ProtectedUserId);
   const [localError, setLocalError] = useState<string | null>(null);
   const [requiresName, setRequiresName] = useState(initialNameRequired);
   const requestMode = mode === "verify_email" || mode === "reset_password";
@@ -45,7 +46,12 @@ export function EmailAuthForm({
       if (requestMode) {
         await requestEmail(String(data.get("email")).trim().toLowerCase(), mode);
       } else if (mode === "change") {
-        await changePassword(String(data.get("currentPassword")), String(data.get("password")));
+        if (!expectedUserId) throw new Error("Password change requires a verified session");
+        await changePassword(
+          String(data.get("currentPassword")),
+          String(data.get("password")),
+          expectedUserId,
+        );
       } else {
         if (window.location.hash !== fragment) throw new Error(ko.emailAuth.invalidToken);
         const match = /^#(verify_email|reset_password):([0-9a-f]{64})$/.exec(fragment);

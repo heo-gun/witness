@@ -25,7 +25,7 @@ export function OrgSettingsForm({
   const [validationError, setValidationError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: (input: Pick<Organization, "name" | "description">) =>
-      updateOrg(organization.slug, input),
+      updateOrg(organization.slug, input, userId),
     onSuccess: async (result) => {
       queryClient.setQueryData(orgKeys.detail(userId, result.slug), result);
       toast.success(ko.workspace.updated);

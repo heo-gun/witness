@@ -80,7 +80,9 @@ export function SiteHeader() {
               <Button
                 variant="outline"
                 disabled={mutation.isPending}
-                onClick={() => mutation.mutate()}
+                onClick={() => {
+                  if (session.data) mutation.mutate(session.data.id);
+                }}
               >
                 {mutation.isPending ? ko.auth.signingOut : ko.common.logout}
               </Button>

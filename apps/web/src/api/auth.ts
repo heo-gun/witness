@@ -34,8 +34,16 @@ export function confirmEmail(
     body: { token, purpose, password, name },
   });
 }
-export function changePassword(currentPassword: string, password: string): Promise<void> {
-  return apiRequest("/auth/password", { method: "POST", body: { currentPassword, password } });
+export function changePassword(
+  currentPassword: string,
+  password: string,
+  expectedUserId: string,
+): Promise<void> {
+  return apiRequest("/auth/password", {
+    method: "POST",
+    body: { currentPassword, password },
+    expectedUserId,
+  });
 }
 
 export function register(input: RegisterInput): Promise<{ accepted: true }> {
@@ -46,9 +54,9 @@ export function login(input: LoginInput): Promise<User> {
   return apiRequest("/auth/login", { method: "POST", body: input });
 }
 
-export async function logout(): Promise<void> {
+export async function logout(expectedUserId: string): Promise<void> {
   try {
-    await apiRequest("/auth/logout", { method: "POST", body: {} });
+    await apiRequest("/auth/logout", { method: "POST", body: {}, expectedUserId });
   } catch (error: unknown) {
     if (!(error instanceof ApiError && error.status === 401)) throw error;
   }

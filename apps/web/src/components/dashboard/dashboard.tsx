@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { listOrgs, orgKeys } from "@/api/orgs";
 import { ApiError } from "@/api/client";
-import { updateSession, useSession } from "@/lib/auth";
+import { useProtectedUserId } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,21 +17,13 @@ const dateFormat = new Intl.DateTimeFormat("ko-KR", {
 });
 
 export function Dashboard() {
-  const session = useSession();
-  const queryClient = useQueryClient();
-  const userId = session.data?.id ?? "";
+  const userId = useProtectedUserId();
   const organizations = useQuery({
     queryKey: orgKeys.list(userId),
-    queryFn: ({ signal }) => listOrgs(signal),
+    queryFn: ({ signal }) => listOrgs(userId, signal),
     enabled: !!userId,
     retry: (attempt, error) => attempt < 1 && (!(error instanceof ApiError) || error.status >= 500),
   });
-
-  useEffect(() => {
-    if (organizations.error instanceof ApiError && organizations.error.status === 401) {
-      void updateSession(queryClient, null);
-    }
-  }, [organizations.error, queryClient]);
 
   return (
     <main id="main-content" className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">

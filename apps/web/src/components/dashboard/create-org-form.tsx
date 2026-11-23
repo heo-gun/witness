@@ -5,9 +5,8 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { toast } from "sonner";
 import { createOrg, orgKeys } from "@/api/orgs";
-import type { Organization } from "@/api/orgs";
+import type { CreateOrgInput, Organization } from "@/api/orgs";
 import { ApiError } from "@/api/client";
-import { updateSession } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,6 +18,7 @@ function errorMessage(error: unknown): string {
     if (error.status === 409) return ko.orgs.duplicateSlug;
     if (error.status === 400) return ko.orgs.invalidInput;
     if (error.status === 401) return ko.orgs.sessionExpired;
+    if (error.status === 412) return ko.auth.accountChanged;
     return ko.common.serverError;
   }
   return ko.common.networkError;
@@ -29,7 +29,7 @@ export function CreateOrgForm({ userId }: { userId: string }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const mutation = useMutation({
-    mutationFn: createOrg,
+    mutationFn: (input: CreateOrgInput) => createOrg(input, userId),
     onSuccess: async (organization) => {
       queryClient.setQueryData<Organization[]>(orgKeys.list(userId), (previous) => [
         organization,
@@ -41,7 +41,6 @@ export function CreateOrgForm({ userId }: { userId: string }) {
     },
     onError: (error) => {
       toast.error(errorMessage(error));
-      if (error instanceof ApiError && error.status === 401) void updateSession(queryClient, null);
     },
   });
 
