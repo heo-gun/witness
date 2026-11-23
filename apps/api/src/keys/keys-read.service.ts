@@ -61,11 +61,44 @@ export class KeysReadService {
         } else if (viewer.role !== "owner") {
           where.userId = viewerId;
         }
-        const keys = await tx.memberKey.findMany({
-          where,
-          select: KEY_SELECT,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        });
+        const orderBy: Prisma.MemberKeyOrderByWithRelationInput[] = [
+          { createdAt: "desc" },
+          { id: "desc" },
+        ];
+        if (viewer.role === "owner" && activeForUserId === undefined) {
+          const keys = await tx.memberKey.findMany({
+            where,
+            orderBy,
+            select: { ...KEY_SELECT, user: { select: { email: true, createdAt: true } } },
+          });
+          if (!keys.length) return [];
+          const invitations = await tx.invitation.findMany({
+            where: {
+              orgId,
+              email: { in: [...new Set(keys.map((key) => key.user.email))] },
+              status: "accepted",
+              respondedAt: { not: null },
+            },
+            orderBy: [{ respondedAt: "desc" }, { id: "desc" }],
+            distinct: ["email"],
+            select: { email: true, createdAt: true, respondedAt: true },
+          });
+          const byEmail = new Map(invitations.map((invitation) => [invitation.email, invitation]));
+          return keys.map(({ user, ...key }) => {
+            const latest = byEmail.get(user.email);
+            const invite =
+              latest?.respondedAt && latest.respondedAt >= user.createdAt ? latest : undefined;
+            return {
+              ...keyWithDates(key),
+              review: {
+                accountCreatedAt: user.createdAt,
+                invitationCreatedAt: invite?.createdAt ?? null,
+                invitationAcceptedAt: invite?.respondedAt ?? null,
+              },
+            };
+          });
+        }
+        const keys = await tx.memberKey.findMany({ where, select: KEY_SELECT, orderBy });
         return keys.map(keyWithDates);
       },
       { isolationLevel: "RepeatableRead" },

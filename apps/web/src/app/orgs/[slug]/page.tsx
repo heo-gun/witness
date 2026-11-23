@@ -15,7 +15,7 @@ export default async function OrgPage({
   const [{ slug }, { tab }] = await Promise.all([params, searchParams]);
   return (
     <RequireSession>
-      <OrgDetails slug={slug} tab={tab === "settings" ? "settings" : "members"} />
+      <OrgDetails slug={slug} tab={tab === "settings" || tab === "keys" ? tab : "members"} />
     </RequireSession>
   );
 }

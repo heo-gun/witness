@@ -7,14 +7,16 @@ import { listMembers, memberKeys } from "@/api/members";
 import { getOrg, orgKeys } from "@/api/orgs";
 import { useProtectedUserId } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
+import { keyAdminText } from "@/lib/i18n/key-admin";
 import { workspaceErrorMessage, workspaceRetry } from "@/lib/workspace";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InviteMemberForm } from "./invite-member-form";
 import { MembersPanel } from "./members-panel";
+import { OrgKeysPanel } from "./org-keys-panel";
 import { OrgSettingsForm } from "./org-settings-form";
 
-export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "settings" }) {
+export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "settings" | "keys" }) {
   const userId = useProtectedUserId();
   const organization = useQuery({
     queryKey: orgKeys.detail(userId, slug),
@@ -90,7 +92,7 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
           </div>
           <nav
             aria-label={ko.workspace.eyebrow}
-            className="mb-8 flex gap-2 border-b border-border pb-4"
+            className="mb-8 flex flex-wrap gap-2 border-b border-border pb-4"
           >
             <Link
               href={href}
@@ -101,6 +103,15 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
             </Link>
             {canManage && (
               <Link
+                href={`${href}?tab=keys`}
+                aria-current={tab === "keys" ? "page" : undefined}
+                className={buttonVariants({ variant: tab === "keys" ? "default" : "ghost" })}
+              >
+                {keyAdminText.title}
+              </Link>
+            )}
+            {canManage && (
+              <Link
                 href={`${href}?tab=settings`}
                 aria-current={tab === "settings" ? "page" : undefined}
                 className={buttonVariants({ variant: tab === "settings" ? "default" : "ghost" })}
@@ -109,7 +120,18 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
               </Link>
             )}
           </nav>
-          {tab === "settings" ? (
+          {tab === "keys" ? (
+            canManage ? (
+              <OrgKeysPanel
+                key={`${userId}-${slug}`}
+                userId={userId}
+                slug={slug}
+                members={members.data}
+              />
+            ) : (
+              <Card role="alert">{keyAdminText.ownerOnly}</Card>
+            )
+          ) : tab === "settings" ? (
             canManage ? (
               <OrgSettingsForm
                 key={`${userId}-${slug}`}

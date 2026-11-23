@@ -97,6 +97,34 @@ describe("member key lifecycle (e2e)", () => {
     await app?.close();
   });
 
+  it("shows the latest accepted invitation from this organization only in the owner review", async () => {
+    const who = await actor("signer");
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: who.id } });
+    const key = (await register(who, keyBody("sign")).expect(201)).body as Key;
+    const at = (offset: number) => new Date(user.createdAt.getTime() + offset);
+    const fields = { email: user.email, invitedById: owner.id, role: "signer" as const };
+    const other = await prisma.membership.findFirstOrThrow({ where: { userId: otherOwner.id } });
+    await prisma.invitation.createMany({
+      data: [
+        { ...fields, orgId, status: "accepted", createdAt: at(1), respondedAt: at(2) },
+        { ...fields, orgId, status: "accepted", createdAt: at(3), respondedAt: at(4) },
+        { ...fields, orgId, status: "declined", createdAt: at(5), respondedAt: at(6) },
+        { ...fields, orgId: other.orgId, status: "accepted", createdAt: at(7), respondedAt: at(8) },
+      ],
+    });
+    expect((await get(owner, "/keys").expect(200)).body).toContainEqual({
+      ...key,
+      review: {
+        accountCreatedAt: user.createdAt.toISOString(),
+        invitationCreatedAt: at(3).toISOString(),
+        invitationAcceptedAt: at(4).toISOString(),
+      },
+    });
+    expect((await get(who, "/keys").expect(200)).body).toEqual([key]);
+    const approved = (await change(owner, key.id, "approve", {}).expect(200)).body as Key;
+    await get(owner, "/members/" + who.id + "/keys").expect(200, [approved]);
+  });
+
   it("registers the caller's pending key and projects approval and revocation from published entries", async () => {
     const before = await treeSize();
     const body = keyBody("sign");
