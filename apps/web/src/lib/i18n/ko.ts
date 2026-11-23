@@ -61,7 +61,7 @@ export const ko = {
     signingOut: "로그아웃 중…",
     noAccount: "아직 계정이 없으신가요?",
     hasAccount: "이미 계정이 있으신가요?",
-    registered: "계정을 만들었습니다. 로그인해 주세요.",
+    registered: "가입 요청을 접수했습니다. 메일함에서 Witness 안내를 확인해 주세요.",
     signedOut: "모든 기기에서 로그아웃했습니다.",
     alreadySignedIn: "이미 로그인되어 있습니다.",
     continueDashboard: "내 기관으로 이동",

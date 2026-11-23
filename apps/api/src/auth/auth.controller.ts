@@ -35,8 +35,11 @@ export class AuthController {
   @Post("register")
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  register(@Body() input: RegisterDto) {
-    return this.auth.register(input);
+  @HttpCode(202)
+  @Header("Cache-Control", "no-store")
+  async register(@Body() input: RegisterDto) {
+    await this.auth.register(input);
+    return { accepted: true };
   }
 
   @Post("email/request")

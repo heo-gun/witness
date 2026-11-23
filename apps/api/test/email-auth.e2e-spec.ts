@@ -78,9 +78,11 @@ describe("Email verification and recovery", () => {
 
   it("registers unverified, sends mail, and exposes no token or password hash", async () => {
     const email = `register-email-${randomUUID()}@example.com`;
-    const result = await post("register").send({ email, name: "Registrant", password }).expect(201);
-    ids.push(String(result.body.id));
-    expect(result.body.emailVerifiedAt).toBeNull();
+    const result = await post("register").send({ email, name: "Registrant", password }).expect(202);
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    ids.push(user.id);
+    expect(user.emailVerifiedAt).toBeNull();
+    expect(result.body).toEqual({ accepted: true });
     expect(result.body).not.toHaveProperty("passwordHash");
     expect(JSON.stringify(result.body)).not.toContain(latest(email).token);
     expect(latest(email).purpose).toBe("verify_email");

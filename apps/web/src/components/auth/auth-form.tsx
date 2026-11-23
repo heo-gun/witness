@@ -28,14 +28,14 @@ export function AuthForm({
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const mutation = useMutation({
-    mutationFn: (input: RegisterInput) =>
+    mutationFn: async (input: RegisterInput) =>
       isRegister ? register(input) : login({ email: input.email, password: input.password }),
-    onSuccess: async (user) => {
-      if (isRegister) {
-        toast.success(ko.emailAuth.sent);
-        router.replace("/verify-email");
+    onSuccess: async (result) => {
+      if ("accepted" in result) {
+        toast.success(ko.auth.registered);
+        router.replace("/login");
       } else {
-        await updateSession(queryClient, user);
+        await updateSession(queryClient, result);
         if (!stayOnPage) router.replace("/dashboard");
       }
     },

@@ -17,7 +17,16 @@ import { MailService } from "./mail.service.js";
 import type { ChangePasswordDto, ConsumeEmailTokenDto } from "./dto/email-token.dto.js";
 
 const LIFETIME = 15 * 60_000;
+const RESEND_INTERVAL = 60_000;
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
+
+interface EmailDelivery {
+  userId: string;
+  email: string;
+  token: string;
+  purpose: EmailTokenPurpose;
+  existingAccount?: "verified" | "unverified";
+}
 
 @Injectable()
 export class EmailTokenService {
@@ -28,35 +37,58 @@ export class EmailTokenService {
     private readonly mail: MailService,
   ) {}
 
-  async request(email: string, purpose: EmailTokenPurpose): Promise<void> {
-    const token = randomBytes(32).toString("hex");
-    const userId = await this.prisma.$transaction(async (tx) => {
+  async request(email: string, intent: EmailTokenPurpose | "registration_attempt"): Promise<void> {
+    const delivery = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<
         { id: string }[]
       >`SELECT id FROM users WHERE email = ${email} FOR UPDATE`;
       if (!rows[0]) return null;
-      const user = await tx.user.findUniqueOrThrow({ where: { id: rows[0].id } });
-      if (purpose === "verify_email" && user.emailVerifiedAt) return null;
-      const previous = await tx.emailToken.findUnique({
-        where: { userId_purpose: { userId: user.id, purpose } },
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: rows[0].id },
+        select: { id: true, email: true, emailVerifiedAt: true },
       });
-      // Per-account cooldown also applies when requests come from different IPs.
-      if (previous && previous.expiresAt.getTime() > Date.now() + LIFETIME - 60_000) return null;
-      await tx.emailToken.upsert({
-        where: { userId_purpose: { userId: user.id, purpose } },
-        create: {
+      if (intent === "verify_email" && user.emailVerifiedAt) return null;
+      const cooldown = { expiresAt: { gt: new Date(Date.now() + LIFETIME - RESEND_INTERVAL) } };
+      const existingRegistration = intent === "registration_attempt";
+      const purpose = existingRegistration ? "reset_password" : intent;
+      const previous = await tx.emailToken.findFirst({
+        where: {
           userId: user.id,
-          purpose,
-          tokenHash: hash(token),
-          expiresAt: new Date(Date.now() + LIFETIME),
+          // A signup retry must never rotate an existing recovery link.
+          ...(existingRegistration
+            ? { OR: [cooldown, { purpose, expiresAt: { gt: new Date() } }] }
+            : { purpose, ...cooldown }),
         },
-        update: { tokenHash: hash(token), expiresAt: new Date(Date.now() + LIFETIME) },
+        select: { userId: true },
       });
-      return user.id;
+      if (previous) return null;
+      const reserved = await this.reserve(tx, user, purpose);
+      if (existingRegistration) {
+        reserved.existingAccount = user.emailVerifiedAt ? "verified" : "unverified";
+      }
+      return reserved;
     });
-    if (!userId) return;
+    if (delivery) await this.deliver(delivery);
+  }
+
+  async reserve(
+    tx: Prisma.TransactionClient,
+    user: { id: string; email: string },
+    purpose: EmailTokenPurpose,
+  ): Promise<EmailDelivery> {
+    const token = randomBytes(32).toString("hex");
+    const data = { tokenHash: hash(token), expiresAt: new Date(Date.now() + LIFETIME) };
+    await tx.emailToken.upsert({
+      where: { userId_purpose: { userId: user.id, purpose } },
+      create: { userId: user.id, purpose, ...data },
+      update: data,
+    });
+    return { userId: user.id, email: user.email, token, purpose };
+  }
+
+  async deliver({ userId, email, token, purpose, existingAccount }: EmailDelivery): Promise<void> {
     try {
-      await this.mail.send(email, token, purpose);
+      await this.mail.send(email, token, purpose, existingAccount);
     } catch {
       await this.prisma.emailToken.deleteMany({
         where: { userId, purpose, tokenHash: hash(token) },

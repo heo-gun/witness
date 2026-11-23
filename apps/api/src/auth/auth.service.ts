@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -39,18 +39,24 @@ export class AuthService {
 
   async register(input: RegisterDto) {
     const passwordHash = await this.passwords.hash(input.password);
-    try {
-      const user = await this.prisma.user.create({
-        data: { email: input.email, name: input.name, passwordHash },
-        select: { id: true, email: true, name: true, createdAt: true, emailVerifiedAt: true },
-      });
-      await this.emailTokens.request(user.email, "verify_email");
-      return user;
-    } catch (error: unknown) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw new ConflictException("Email is already registered");
+    const delivery = await this.prisma.$transaction(async (tx) => {
+      let user: { id: string; email: string };
+      try {
+        user = await tx.user.create({
+          data: { email: input.email, name: input.name, passwordHash },
+          select: { id: true, email: true },
+        });
+      } catch (error: unknown) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+          return null;
+        throw error;
       }
-      throw error;
+      return this.emailTokens.reserve(tx, user, "verify_email");
+    });
+    if (delivery) {
+      await this.emailTokens.deliver(delivery);
+    } else {
+      await this.emailTokens.request(input.email, "registration_attempt");
     }
   }
 }

@@ -350,11 +350,11 @@ describe("Members and invitations (e2e)", () => {
 
   it("blocks an email squatter from accepting an invitation without its secret", async () => {
     const email = `${prefix}-squatter@example.com`;
-    const registration = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post("/api/v1/auth/register")
       .send({ email, name: "squatter", password: "squatter-test-password" })
-      .expect(201);
-    const id = (registration.body as { id: string }).id;
+      .expect(202);
+    const { id } = await prisma.user.findUniqueOrThrow({ where: { email } });
     userIds.push(id);
     const login = await request(app.getHttpServer())
       .post("/api/v1/auth/login")

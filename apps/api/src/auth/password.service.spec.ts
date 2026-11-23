@@ -9,8 +9,8 @@ describe("PasswordService", () => {
     service = moduleRef.get(PasswordService);
   });
 
-  it("hashes with Argon2id and verifies the original password", async () => {
-    const password = "12345678a!";
+  it("hashes with Argon2id and preserves surrounding password whitespace", async () => {
+    const password = " 12345678a! ";
     const passwordHash = await service.hash(password);
 
     expect(passwordHash).toMatch(/^\$argon2id\$v=19\$/);

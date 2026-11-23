@@ -34,7 +34,7 @@ export function changePassword(currentPassword: string, password: string): Promi
   return apiRequest("/auth/password", { method: "POST", body: { currentPassword, password } });
 }
 
-export function register(input: RegisterInput): Promise<User> {
+export function register(input: RegisterInput): Promise<{ accepted: true }> {
   return apiRequest("/auth/register", { method: "POST", body: input });
 }
 

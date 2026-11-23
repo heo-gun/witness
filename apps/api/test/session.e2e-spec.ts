@@ -33,11 +33,11 @@ describe("Authentication sessions (e2e)", () => {
     await app.init();
     prisma = app.get(PrismaService);
     jwt = app.get(JwtService);
-    const res = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post("/api/v1/auth/register")
       .send({ email, name: "세션 사용자", password })
-      .expect(201);
-    userId = String(res.body.id);
+      .expect(202);
+    userId = (await prisma.user.findUniqueOrThrow({ where: { email } })).id;
   });
 
   afterAll(async () => {
