@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Agent } from "node:http";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
@@ -17,7 +18,7 @@ describe("Rate limits (real Guards and storage)", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    configureApp(app);
+    configureApp(app, "127.0.0.2");
     await app.listen(0, "127.0.0.1");
     prisma = app.get(PrismaService);
     const user = await prisma.user.create({
@@ -37,6 +38,23 @@ describe("Rate limits (real Guards and storage)", () => {
       if (userId) await prisma.user.delete({ where: { id: userId } });
     } finally {
       await app?.close();
+    }
+  });
+
+  it("keeps separate client limits behind the configured web proxy", async () => {
+    const proxy = new Agent({ localAddress: "127.0.0.2" });
+    const post = (ip: string) =>
+      request(app.getHttpServer())
+        .post("/api/v1/auth/email/request")
+        .agent(proxy)
+        .set("X-Forwarded-For", ip)
+        .send({});
+    try {
+      for (let i = 0; i < 3; i++) await post("192.0.2.11").expect(400);
+      await post("192.0.2.11").expect(429);
+      await post("192.0.2.12").expect(400);
+    } finally {
+      proxy.destroy();
     }
   });
 

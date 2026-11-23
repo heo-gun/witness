@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:4000";
+const apiOrigin = process.env.API_ORIGIN ?? "http://127.0.0.1:4000";
 
 const nextConfig: NextConfig = {
   // 에이전트 규칙은 .AI/에서만 관리한다 (next dev의 AGENTS.md 자동 생성 끔)
