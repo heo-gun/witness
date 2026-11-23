@@ -1,3 +1,4 @@
+import { JwtService } from "@nestjs/jwt";
 import { getJwtOptions, sessionCookieOptions } from "./session.config.js";
 
 describe("Session configuration", () => {
@@ -22,5 +23,16 @@ describe("Session configuration", () => {
     process.env.NODE_ENV = "production";
     expect(getJwtOptions().verifyOptions?.algorithms).toEqual(["HS256"]);
     expect(sessionCookieOptions()).toMatchObject({ secure: true, httpOnly: true, sameSite: "lax" });
+  });
+
+  it("accepts a session just before four hours and rejects it at four hours", () => {
+    process.env.JWT_SECRET = "x".repeat(32);
+    const jwt = new JwtService(getJwtOptions());
+    const issuedAt = 1_800_000_000;
+    const expiresAt = issuedAt + 4 * 60 * 60;
+    const token = jwt.sign({ sub: "test-user", iat: issuedAt });
+
+    expect(jwt.verify(token, { clockTimestamp: expiresAt - 1 })).toMatchObject({ exp: expiresAt });
+    expect(() => jwt.verify(token, { clockTimestamp: expiresAt })).toThrow("jwt expired");
   });
 });

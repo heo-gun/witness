@@ -70,12 +70,12 @@ describe("Authentication sessions (e2e)", () => {
     expect(header).toContain("HttpOnly");
     expect(header).toContain("SameSite=Lax");
     expect(header).toContain("Path=/api/v1");
-    expect(header).toContain("Max-Age=900");
+    expect(header).toContain("Max-Age=14400");
     sessionCookie = header.split(";")[0] ?? "";
     const token = sessionCookie.slice(`${SESSION_COOKIE}=`.length);
     const payload = await jwt.verifyAsync<Record<string, unknown>>(token);
     expect(payload.sub).toBe(userId);
-    expect(Number(payload.exp) - Number(payload.iat)).toBe(900);
+    expect(Number(payload.exp) - Number(payload.iat)).toBe(14_400);
     expect(payload.ver).toBe(0);
     expect(payload).not.toHaveProperty("email");
     expect(payload).not.toHaveProperty("passwordHash");
@@ -94,6 +94,36 @@ describe("Authentication sessions (e2e)", () => {
       emailVerifiedAt: null,
     });
     expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("rejects a password draft from a previous account after the browser switches sessions", async () => {
+    const original = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const other = await prisma.user.create({
+      data: {
+        email: `other-session-${randomUUID()}@example.com`,
+        name: "Other user",
+        passwordHash: original.passwordHash,
+      },
+    });
+    try {
+      const browser = request.agent(app.getHttpServer());
+      await browser.post("/api/v1/auth/login").send({ email, password }).expect(200);
+      await browser.post("/api/v1/auth/login").send({ email: other.email, password }).expect(200);
+      const change = (expectedUserId: string) =>
+        browser
+          .post("/api/v1/auth/password")
+          .set("X-Expected-User-Id", expectedUserId)
+          .send({ currentPassword: password, password: "new-session-password" });
+
+      await change(original.id).expect(412);
+      expect(await prisma.user.findUniqueOrThrow({ where: { id: other.id } })).toEqual(other);
+      expect((await browser.get("/api/v1/auth/me").expect(200)).body.id).toBe(other.id);
+      await change(other.id).expect(204);
+      await browser.get("/api/v1/auth/me").expect(401);
+      expect(await prisma.user.findUniqueOrThrow({ where: { id: userId } })).toEqual(original);
+    } finally {
+      await prisma.user.delete({ where: { id: other.id } });
+    }
   });
 
   it.each([

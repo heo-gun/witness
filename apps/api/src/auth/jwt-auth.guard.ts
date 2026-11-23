@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable, PreconditionFailedException, UnauthorizedException } from "@nestjs/common";
 import type { CanActivate, ExecutionContext } from "@nestjs/common";
 import { parseCookie } from "cookie";
 import type { SessionRequest } from "./current-user.decorator.js";
@@ -15,6 +15,10 @@ export class JwtAuthGuard implements CanActivate {
     const token = parseCookie(req.headers.cookie ?? "")[SESSION_COOKIE];
     if (!token) throw new UnauthorizedException("Authentication required");
     req.user = await this.sessions.authenticate(token);
+    const expectedUserId = req.headers["x-expected-user-id"];
+    if (expectedUserId !== undefined && expectedUserId !== req.user.id) {
+      throw new PreconditionFailedException("The signed-in account has changed");
+    }
     return true;
   }
 }
