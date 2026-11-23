@@ -20,6 +20,7 @@ export const ko = {
   brand: "tlog",
   description: "학생단체 문서의 승인과 책임을 기록하는 투명성 로그",
   common: {
+    myKeys: "내 키",
     home: "홈",
     dashboard: "내 기관",
     login: "로그인",

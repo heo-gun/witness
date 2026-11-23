@@ -73,9 +73,18 @@ export function SiteHeader() {
                 {session.data.name}
               </span>
               {session.data.emailVerifiedAt && (
-                <Link href="/settings/password" className="text-xs underline">
-                  {ko.emailAuth.change}
-                </Link>
+                <>
+                  <Link
+                    href="/settings/keys"
+                    aria-current={pathname === "/settings/keys" ? "page" : undefined}
+                    className="text-sm underline underline-offset-4"
+                  >
+                    {ko.common.myKeys}
+                  </Link>
+                  <Link href="/settings/password" className="text-xs underline">
+                    {ko.emailAuth.change}
+                  </Link>
+                </>
               )}
               <Button
                 variant="outline"
