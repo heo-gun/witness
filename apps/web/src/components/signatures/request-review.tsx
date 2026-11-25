@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { KeyFingerprint } from "@/components/keys/key-fingerprint";
 import { getPrivateKey, listLocalKeys } from "@/lib/crypto/keys";
 import { decryptFile } from "@/lib/crypto/transfer";
-import { signIssue } from "@/lib/crypto/sign";
+import { signPayload } from "@/lib/crypto/sign";
 import { previewType } from "@/lib/preview-type";
 import { formatInboxTime } from "@/lib/inbox";
 import { inboxText as t } from "@/lib/i18n/inbox";
@@ -174,7 +174,7 @@ function DecisionForm({ item, userId }: { item: InboxItem; userId: string }) {
         category,
         signedAt,
       };
-      const signature = await signIssue(payload, key).catch(() => {
+      const signature = await signPayload(payload, key).catch(() => {
         throw new ReviewError(t.failedSign);
       });
       return signRequest(item.id, userId, {
@@ -190,7 +190,11 @@ function DecisionForm({ item, userId }: { item: InboxItem; userId: string }) {
         onDisplayed(false);
         await queryClient.invalidateQueries({ queryKey: reviewKey });
       }
-      if (!error) await queryClient.invalidateQueries({ queryKey: ["log"] });
+      if (!error)
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["log"] }),
+          queryClient.invalidateQueries({ queryKey: ["documents"] }),
+        ]);
     },
   });
   function message(error: Error) {

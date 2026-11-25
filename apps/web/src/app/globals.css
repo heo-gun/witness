@@ -46,3 +46,17 @@
     background: #dce5f1;
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .verification-step {
+    animation: verification-appear 180ms both;
+  }
+  @keyframes verification-appear {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module.js";
+import { DocumentsModule } from "./documents/documents.module.js";
 import { FilesModule } from "./files/files.module.js";
 import { InvitationsModule } from "./invitations/invitations.module.js";
 import { KeysModule } from "./keys/keys.module.js";
@@ -23,6 +24,7 @@ import { SignaturesModule } from "./signatures/signatures.module.js";
     KeysModule,
     SignaturesModule,
     FilesModule,
+    DocumentsModule,
   ],
 })
 export class AppModule {}

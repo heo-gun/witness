@@ -8,6 +8,7 @@ import { getOrg, orgKeys } from "@/api/orgs";
 import { useProtectedUserId } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { keyAdminText } from "@/lib/i18n/key-admin";
+import { documentText } from "@/lib/i18n/documents";
 import { requestText } from "@/lib/i18n/signature-requests";
 import { workspaceErrorMessage, workspaceRetry } from "@/lib/workspace";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -16,8 +17,15 @@ import { InviteMemberForm } from "./invite-member-form";
 import { MembersPanel } from "./members-panel";
 import { OrgKeysPanel } from "./org-keys-panel";
 import { OrgSettingsForm } from "./org-settings-form";
+import { OrgDocuments } from "./org-documents";
 
-export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "settings" | "keys" }) {
+export function OrgDetails({
+  slug,
+  tab,
+}: {
+  slug: string;
+  tab: "documents" | "members" | "settings" | "keys";
+}) {
   const userId = useProtectedUserId();
   const organization = useQuery({
     queryKey: orgKeys.detail(userId, slug),
@@ -110,6 +118,13 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
             className="mb-8 flex flex-wrap gap-2 border-b border-border pb-4"
           >
             <Link
+              href={`${href}?tab=documents`}
+              aria-current={tab === "documents" ? "page" : undefined}
+              className={buttonVariants({ variant: tab === "documents" ? "default" : "ghost" })}
+            >
+              {documentText.documents}
+            </Link>
+            <Link
               href={href}
               aria-current={tab === "members" ? "page" : undefined}
               className={buttonVariants({ variant: tab === "members" ? "default" : "ghost" })}
@@ -135,7 +150,9 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
               </Link>
             )}
           </nav>
-          {tab === "keys" ? (
+          {tab === "documents" ? (
+            <OrgDocuments slug={slug} />
+          ) : tab === "keys" ? (
             canManage ? (
               <OrgKeysPanel
                 key={`${userId}-${slug}`}

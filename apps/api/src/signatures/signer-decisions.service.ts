@@ -1,11 +1,10 @@
-import { createPublicKey, verify } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { canonicalBytes, hexToBytes, type IssuePayload } from "@tlog/shared";
+import type { IssuePayload } from "@tlog/shared";
 import type { AuthenticatedUser } from "../auth/session.service.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { CiphertextCleanup } from "../files/ciphertext-cleanup.service.js";
@@ -16,6 +15,7 @@ import { lockOrganization, lockUsers } from "../members/organization-lock.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { RejectRequestDto, SignRequestDto } from "./dto/decision.dto.js";
+import { requireRecentSignature, verifyDocumentSignature } from "./document-signature.js";
 
 const decisionFields = {
   id: true,
@@ -114,9 +114,7 @@ export class SignerDecisionsService {
       throw new ConflictException("The encrypted file is unavailable");
     if (document.fileHash !== input.fileHash)
       throw new BadRequestException("File hash differs from the document");
-    const signedTime = Date.parse(input.signedAt);
-    if (!Number.isFinite(signedTime) || Math.abs(signedTime - now.getTime()) >= 5 * 60_000)
-      throw new BadRequestException("Signing time is outside the allowed window");
+    requireRecentSignature(input.signedAt, now);
     const keys = await tx.memberKey.findMany({
       where: {
         orgId,
@@ -143,16 +141,7 @@ export class SignerDecisionsService {
       signerKeyFingerprint: signing.fingerprint,
       signedAt: input.signedAt,
     };
-    const publicKey = createPublicKey({
-      format: "jwk",
-      key: {
-        kty: "OKP",
-        crv: "Ed25519",
-        x: Buffer.from(signing.publicKey, "hex").toString("base64url"),
-      },
-    });
-    if (!verify(null, canonicalBytes(payload), publicKey, hexToBytes(input.signature, 64)))
-      throw new BadRequestException("Invalid document signature");
+    verifyDocumentSignature(payload, input.signature, signing.publicKey);
     const { leafIndex } = await this.log.append(tx, { payload, signature: input.signature });
     return leafIndex;
   }

@@ -1,10 +1,7 @@
 import { Transform } from "class-transformer";
 import { IsISO8601, IsString, Length, Matches } from "class-validator";
 
-export class SignRequestDto {
-  @Matches(/^[0-9a-f]{64}$/)
-  fileHash!: string;
-
+export class DocumentSignatureDto {
   @Matches(/^[0-9a-f]{64}$/)
   signerKeyFingerprint!: string;
 
@@ -14,6 +11,11 @@ export class SignRequestDto {
 
   @Matches(/^[0-9a-f]{128}$/)
   signature!: string;
+}
+
+export class SignRequestDto extends DocumentSignatureDto {
+  @Matches(/^[0-9a-f]{64}$/)
+  fileHash!: string;
 }
 
 export class RejectRequestDto {
