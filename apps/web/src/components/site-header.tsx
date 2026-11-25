@@ -8,6 +8,27 @@ import { logout } from "@/api/auth";
 import { authErrorMessage, updateSession, useSession } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { Button, buttonVariants } from "./ui/button";
+import { useInbox } from "@/lib/inbox";
+import { inboxText } from "@/lib/i18n/inbox";
+
+function InboxLink({ userId, current }: { userId: string; current: boolean }) {
+  const inbox = useInbox(userId);
+  const count = inbox.error ? 0 : inbox.data?.filter((item) => item.status === "pending").length;
+  return (
+    <Link
+      href="/inbox"
+      aria-current={current ? "page" : undefined}
+      className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
+    >
+      {inboxText.title}
+      {!!count && (
+        <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 export function SiteHeader() {
   const session = useSession();
@@ -74,6 +95,10 @@ export function SiteHeader() {
               </span>
               {session.data.emailVerifiedAt && (
                 <>
+                  <InboxLink
+                    userId={session.data.id}
+                    current={pathname === "/inbox" || pathname.startsWith("/inbox/")}
+                  />
                   <Link
                     href="/settings/keys"
                     aria-current={pathname === "/settings/keys" ? "page" : undefined}

@@ -1,7 +1,9 @@
 import { Injectable, ServiceUnavailableException, type OnModuleDestroy } from "@nestjs/common";
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -51,6 +53,28 @@ export class CiphertextStorage implements OnModuleDestroy {
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), {
       abortSignal: AbortSignal.timeout(10_000),
     });
+  }
+
+  async removeRequest(requestId: string): Promise<void> {
+    const { client, bucket } = this.storage();
+    const prefix = `files/${requestId}/`;
+    // At most one live copy; interrupted replacements may have left additional versions here.
+    for (;;) {
+      const page = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }), {
+        abortSignal: AbortSignal.timeout(10_000),
+      });
+      const objects = (page.Contents ?? []).map(({ Key }) => {
+        if (!Key?.startsWith(prefix)) throw new Error("Unexpected file storage key");
+        return { Key };
+      });
+      if (!objects.length) return;
+      const result = await client.send(
+        new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: objects, Quiet: true } }),
+        { abortSignal: AbortSignal.timeout(10_000) },
+      );
+      if (result.Errors?.length) throw new Error("Encrypted file deletion incomplete");
+      if (!page.IsTruncated) return;
+    }
   }
 
   onModuleDestroy() {

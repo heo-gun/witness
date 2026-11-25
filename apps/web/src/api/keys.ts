@@ -33,10 +33,15 @@ export function listKeys(
   return apiRequest(`/orgs/${encodeURIComponent(slug)}/keys`, { expectedUserId, signal });
 }
 
-export function getMemberActiveKeys(slug: string, userId: string, expectedUserId: string) {
+export function getMemberActiveKeys(
+  slug: string,
+  userId: string,
+  expectedUserId: string,
+  signal?: AbortSignal,
+) {
   return apiRequest<MemberKey[]>(
     `/orgs/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}/keys`,
-    { expectedUserId },
+    { expectedUserId, signal },
   );
 }
 

@@ -145,12 +145,17 @@ export class FilesService {
         await tx.signatureRequest.update({ where: { id }, data: { status: "pending" } });
       });
     } catch (error) {
-      // A superseded writer may finish after its reservation was removed.
+      // A late PUT may recreate the object while decision cleanup is still marking it deleted.
       const current = await this.db.encryptedFile.findUnique({
         where: { requestId: id },
-        select: { storageKey: true, deletedAt: true },
+        select: { storageKey: true, deletedAt: true, request: { select: { status: true } } },
       });
-      if (current?.storageKey !== reservation.key || current.deletedAt)
+      if (
+        current?.storageKey !== reservation.key ||
+        current.deletedAt ||
+        current.request.status === "signed" ||
+        current.request.status === "rejected"
+      )
         await this.storage.remove(reservation.key);
       throw error;
     }

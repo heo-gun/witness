@@ -34,6 +34,9 @@ describe("encrypted file transfer (e2e)", () => {
     async remove(key: string) {
       objects.delete(key);
     },
+    async removeRequest(id: string) {
+      for (const key of objects.keys()) if (key.startsWith(`files/${id}/`)) objects.delete(key);
+    },
   };
   async function actor(role: Role) {
     const user = await db.user.create({
@@ -278,5 +281,42 @@ describe("encrypted file transfer (e2e)", () => {
       return bytes;
     });
     await f.get().expect(409).expect("Content-Type", /json/);
+  });
+
+  it("removes a late identical upload between decision cleanup and its deletion marker", async () => {
+    const f = await fixture();
+    const bytes = randomBytes(20);
+    let started!: () => void, resume!: () => void;
+    const writing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    jest.spyOn(storage, "put").mockImplementationOnce(async (key, data) => {
+      started();
+      await wait;
+      objects.set(key, data);
+    });
+    const late = f.put(bytes).then((response) => response.status);
+    try {
+      await writing;
+      await f.put(bytes).expect(200);
+      const remove = storage.removeRequest.bind(storage);
+      jest.spyOn(storage, "removeRequest").mockImplementationOnce(async (id) => {
+        await remove(id);
+        resume();
+        await late;
+      });
+      await request(app.getHttpServer())
+        .post(`/api/v1/signature-requests/${f.id}/reject`)
+        .set("Cookie", signer.cookie)
+        .send({ reason: "다음 회의로 연기" })
+        .expect(200);
+    } finally {
+      resume();
+    }
+    expect(await late).toBe(409);
+    expect(objects.size).toBe(0);
   });
 });
