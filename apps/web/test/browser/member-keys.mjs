@@ -5,6 +5,7 @@ import { stripTypeScriptTypes } from "node:module";
 
 async function check() {
   const { generateMemberKeys, getPrivateKey, listLocalKeys } = await import("/keys.js");
+  const { encryptFileFor, decryptFile } = await import("/transfer.js");
   function assert(condition, message) {
     if (!condition) throw new Error(message);
   }
@@ -61,6 +62,29 @@ async function check() {
         new Uint8Array(localBits).toHex() === new Uint8Array(remoteBits).toHex(),
         "Key agreement failed",
       );
+      const file = new Blob(["Witness: signed meeting minutes"]);
+      const fileHash = new Uint8Array(
+        await crypto.subtle.digest("SHA-256", await file.arrayBuffer()),
+      ).toHex();
+      const context = {
+        requestId: "request",
+        orgId: scope.orgId,
+        fileHash,
+        recipientFingerprint: key.fingerprint,
+      };
+      const delivery = await encryptFileFor(file, key.publicKey, context);
+      const decoded = await decryptFile(delivery, key.publicKey, secret, context);
+      assert(
+        decoded.fileHash === fileHash &&
+          new TextDecoder().decode(decoded.plaintext) === (await file.text()),
+        "Persisted recipient key failed to open the original file",
+      );
+      new Uint8Array(delivery.ciphertext)[0] ^= 1;
+      const refused = await decryptFile(delivery, key.publicKey, secret, context).then(
+        () => false,
+        () => true,
+      );
+      assert(refused, "Modified ciphertext was accepted");
     }
   }
   const replacement = await generateMemberKeys(scope, "sign", [sign.fingerprint]);
@@ -82,10 +106,23 @@ const hex = await readFile(
   new URL("../../../../packages/shared/src/hex.ts", import.meta.url),
   "utf8",
 );
+const transfer = await readFile(
+  new URL("../../src/lib/crypto/transfer.ts", import.meta.url),
+  "utf8",
+);
+const canonical = await readFile(
+  new URL("../../../../packages/shared/src/canonical.ts", import.meta.url),
+  "utf8",
+);
+const modules = new Map([
+  ["/keys.js", source],
+  ["/shared.js", hex + "\n" + canonical],
+  ["/transfer.js", transfer],
+]);
 const server = createServer((req, res) => {
-  if (req.url === "/keys.js" || req.url === "/hex.js") {
+  if (modules.has(req.url)) {
     res.setHeader("Content-Type", "text/javascript");
-    return res.end(stripTypeScriptTypes(req.url === "/keys.js" ? source : hex));
+    return res.end(stripTypeScriptTypes(modules.get(req.url)));
   }
   if (req.method === "POST" && (req.url === "/pass" || req.url === "/fail")) {
     if (req.url === "/fail") process.exitCode = 1;
@@ -99,7 +136,7 @@ const server = createServer((req, res) => {
   }
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.end(`<title>Witness browser key tests</title>
-<script type="importmap">{"imports":{"@tlog/shared":"/hex.js"}}</script>
+<script type="importmap">{"imports":{"@tlog/shared":"/shared.js"}}</script>
 <script type="module">
 try { await (${check.toString()})(); } catch (error) { await fetch("/fail", {method:"POST", body:String(error)}); }
 </script>`);

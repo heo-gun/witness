@@ -10,7 +10,7 @@ import { lockOrganization, lockUsers } from "../members/organization-lock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { CreateSignatureRequestDto } from "./dto/create-signature-request.dto.js";
 
-const REQUEST_REFERENCE = { id: true, documentId: true, status: true } as const;
+const REQUEST_REFERENCE = { id: true, documentId: true, signerId: true, status: true } as const;
 
 @Injectable()
 export class SignaturesService {
@@ -36,8 +36,11 @@ export class SignaturesService {
           const previous = existing.signatureRequest;
           const conflict = { statusCode: 409, message: "This file already has a document" };
           if (previous?.requesterId === actor.id) {
-            const { id, documentId, status } = previous;
-            throw new ConflictException({ ...conflict, existing: { id, documentId, status } });
+            const { id, documentId, signerId, status } = previous;
+            throw new ConflictException({
+              ...conflict,
+              existing: { id, documentId, signerId, status },
+            });
           }
           throw new ConflictException(conflict);
         }

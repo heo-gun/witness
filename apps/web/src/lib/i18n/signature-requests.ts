@@ -30,9 +30,14 @@ export const requestText = {
   changed:
     "제목과 서명자를 확인해 주세요. 서명자의 역할이나 암호화 키 상태가 바뀌었을 수 있습니다.",
   duplicate: "같은 파일이 이 기관에 이미 등록되어 있습니다.",
-  existing: "기존 요청 보기",
-  created: "서명 요청을 만들었습니다.",
-  uploadHint: "원본 파일은 이 기기에 있습니다. 암호화 파일을 업로드하면 서명자에게 전달됩니다.",
+  existing: "기존 서명 요청",
+  delivered: "암호화 파일을 서명자에게 전달했습니다.",
+  encrypting: "서명자의 키로 파일을 암호화하는 중…",
+  uploading: "암호화 파일을 업로드하는 중…",
+  encryptionFailed: "파일을 암호화하지 못했습니다. 원본 파일과 서명자의 키를 확인해 주세요.",
+  transferConflict: "수신 키 또는 요청 상태가 바뀌었습니다. 다시 보내면 현재 상태를 확인합니다.",
+  retryTransfer: "기존 서명자에게 다시 보내기",
+  otherFile: "다른 파일로 요청 만들기",
   requestId: "요청 ID",
   status: {
     awaiting_upload: "업로드 대기",

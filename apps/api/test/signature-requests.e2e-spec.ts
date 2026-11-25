@@ -106,6 +106,7 @@ describe("signature request creation (e2e)", () => {
       },
     });
     expect(result.body).toEqual({
+      signerId: signer.id,
       documentId: document.id,
       id: document.signatureRequest?.id,
       status: "awaiting_upload",
