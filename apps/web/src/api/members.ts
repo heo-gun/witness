@@ -6,6 +6,7 @@ export interface Member {
   userId: string;
   orgId: string;
   role: Role;
+  canReceiveSignatureRequest?: boolean;
   createdAt: string;
   user: { id: string; name: string; email: string };
 }

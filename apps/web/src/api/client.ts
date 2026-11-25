@@ -1,5 +1,8 @@
 export class ApiError extends Error {
-  constructor(public readonly status: number) {
+  constructor(
+    public readonly status: number,
+    public readonly body?: unknown,
+  ) {
     super(`API request failed (${status})`);
     this.name = "ApiError";
   }
@@ -30,7 +33,11 @@ export async function apiRequest<T>(
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
   });
-  if (!response.ok) throw new ApiError(response.status);
+  if (!response.ok) {
+    const conflict =
+      response.status === 409 ? await response.json().catch(() => undefined) : undefined;
+    throw new ApiError(response.status, conflict);
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }

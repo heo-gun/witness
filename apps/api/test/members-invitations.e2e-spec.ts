@@ -146,6 +146,7 @@ describe("Members and invitations (e2e)", () => {
             userId: owner.id,
             orgId,
             role: "owner",
+            canReceiveSignatureRequest: false,
             createdAt: expect.any(String),
             user: { id: owner.id, name: "owner", email: owner.email },
           },

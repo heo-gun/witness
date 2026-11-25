@@ -17,12 +17,29 @@ const MEMBER_SELECT = {
 export class MembersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  listMembers(orgId: string) {
-    return this.prisma.membership.findMany({
+  async listMembers(orgId: string) {
+    const members = await this.prisma.membership.findMany({
       where: { orgId },
-      select: MEMBER_SELECT,
+      select: {
+        ...MEMBER_SELECT,
+        user: {
+          select: {
+            ...MEMBER_SELECT.user.select,
+            emailVerifiedAt: true,
+            _count: {
+              select: { memberKeys: { where: { orgId, purpose: "encrypt", status: "active" } } },
+            },
+          },
+        },
+      },
       orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
     });
+    return members.map(({ user: { emailVerifiedAt, _count, ...user }, ...member }) => ({
+      ...member,
+      user,
+      canReceiveSignatureRequest:
+        member.role === "signer" && !!emailVerifiedAt && _count.memberKeys > 0,
+    }));
   }
 
   asOwner<T>(

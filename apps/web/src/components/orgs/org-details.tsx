@@ -8,6 +8,7 @@ import { getOrg, orgKeys } from "@/api/orgs";
 import { useProtectedUserId } from "@/lib/auth";
 import { ko } from "@/lib/i18n/ko";
 import { keyAdminText } from "@/lib/i18n/key-admin";
+import { requestText } from "@/lib/i18n/signature-requests";
 import { workspaceErrorMessage, workspaceRetry } from "@/lib/workspace";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,7 +32,8 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
     retry: workspaceRetry,
   });
   const error = organization.error ?? members.error;
-  const canManage = members.data?.find((member) => member.userId === userId)?.role === "owner";
+  const role = members.data?.find((member) => member.userId === userId)?.role;
+  const canManage = role === "owner";
   const href = `/orgs/${encodeURIComponent(slug)}`;
 
   return (
@@ -89,6 +91,19 @@ export function OrgDetails({ slug, tab }: { slug: string; tab: "members" | "sett
                 {organization.data.description}
               </p>
             )}
+            <div className="mt-5">
+              {role === "issuer" ? (
+                <Link href={`${href}/new`} className={buttonVariants()}>
+                  {requestText.create}
+                </Link>
+              ) : (
+                <span title={requestText.issuerOnly}>
+                  <Button disabled aria-label={requestText.issuerOnly}>
+                    {requestText.create}
+                  </Button>
+                </span>
+              )}
+            </div>
           </div>
           <nav
             aria-label={ko.workspace.eyebrow}

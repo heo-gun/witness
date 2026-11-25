@@ -7,6 +7,7 @@ import { LogModule } from "./log/log.module.js";
 import { MembersModule } from "./members/members.module.js";
 import { OrgsModule } from "./orgs/orgs.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
+import { SignaturesModule } from "./signatures/signatures.module.js";
 
 @Module({
   // shortcut: counters are per process; use shared storage before running multiple API replicas.
@@ -19,6 +20,7 @@ import { PrismaModule } from "./prisma/prisma.module.js";
     InvitationsModule,
     LogModule,
     KeysModule,
+    SignaturesModule,
   ],
 })
 export class AppModule {}

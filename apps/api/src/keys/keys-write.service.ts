@@ -4,29 +4,16 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from "@nestjs/common";
 import { hexToBytes, type KeyPurpose } from "@tlog/shared";
 import type { AuthenticatedUser } from "../auth/session.service.js";
 import { Prisma, type MemberKey } from "../generated/prisma/client.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { LogAppendService } from "../log/log-append.service.js";
-import { lockOrganization, withOwnerTransaction } from "../members/organization-lock.js";
+import { lockOrganization, lockUsers, withOwnerTransaction } from "../members/organization-lock.js";
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- Nest requires runtime decorator metadata.
 import { PrismaService } from "../prisma/prisma.service.js";
 import { KEY_SELECT, keyWithDates } from "./keys-read.service.js";
-
-async function lockUsers(tx: Prisma.TransactionClient, actor: AuthenticatedUser, targetId: string) {
-  // Recovery locks this same user row. Use primary-key order when two people are involved.
-  const users = await tx.$queryRaw<{ id: string; tokenVersion: number; verifiedAt: Date | null }[]>`
-    SELECT id, token_version AS tokenVersion, email_verified_at AS verifiedAt FROM users
-    WHERE id IN (${actor.id}, ${targetId}) ORDER BY id FOR UPDATE
-  `;
-  const current = users.find((user) => user.id === actor.id);
-  if (!current || current.tokenVersion !== actor.tokenVersion)
-    throw new UnauthorizedException("Session changed; sign in again");
-  if (!current.verifiedAt) throw new ForbiddenException("Email verification required");
-}
 
 async function requireEligibleMember(
   tx: Prisma.TransactionClient,
